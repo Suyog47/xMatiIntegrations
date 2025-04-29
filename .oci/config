@@ -1,0 +1,6 @@
+[DEFAULT]
+user=ocid1.user.oc1..aaaaaaaaotvxecizjsky25wwvoj5dqat63f7yjazsvlumlun6nsjnudxonya
+fingerprint=22:16:75:42:98:59:b3:d2:94:df:a6:ad:3c:73:f1:39
+tenancy=ocid1.tenancy.oc1..aaaaaaaae7lkrax3pq5wmhjahxh3wmdyycpnebgbtpkqmbnlb7zvlsdoe3ja
+region=ap-mumbai-1
+key_file=./suyogamin11@gmail.com_2024-12-05T07_15_24.276Z.pem
