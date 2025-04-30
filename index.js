@@ -10,7 +10,7 @@ const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversat
 const { setWebhook } = require('./src/telegram/set-webhook');
 const { login, register, updateUserPass } = require('./src/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
-const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3 } = require('./utils/s3-service');
+const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -91,7 +91,7 @@ app.post('/azurebot', async () => {
 });
 
 
-// // Endpoint to talk to azure bot
+// Endpoint to talk to azure bot
 app.post('/azurebot/talk', async (req, res) => {
     try {
         const { input, botId } = req.body;
@@ -310,12 +310,28 @@ app.post('/delete-bot', async (req, res) => {
             return res.status(400).json({ status: false, error: 'Failed to delete bot' });
         }
 
-        return res.status(200).json({ status: true, message: 'Bots deleted successfully', data: result });
+        return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
     } catch (error) {
         return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
     }
 });
 
+app.post('/check-user', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        let result = await keyExists("xmati-users", `${email}.txt`);
+        if (result) {
+            return res.status(400).json({ status: false, message: 'user exists' });
+        } else {
+            return res.status(200).json({ status: true, message: 'No User' });
+        }
+       
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
+    }
+});
 // Specify the port and start the server
 const PORT = 8000;
 app.listen(PORT, () => {
