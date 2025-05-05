@@ -8,7 +8,7 @@ const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
 const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-creation');
 const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
 const { setWebhook } = require('./src/telegram/set-webhook');
-const { login, register, updateUserPass } = require('./src/user-auth/auth');
+const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const cors = require("cors");
@@ -228,8 +228,8 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
-        if (from === "updatePass") {
-            result = await updateUserPass(data.email, data);
+        if (from === "updatePass" || from === "updateProfile") {
+            result = await updateUserPassOrProfile(data.email, data);
             if (result === "success") {
                 status = 200;
                 success = true;
@@ -254,7 +254,6 @@ app.post('/user-auth', async (req, res) => {
         return res.status(400).json({ success: false, msg: "Something went wrong" });
     }
 });
-
 
 app.post('/send-email', async (req, res) => {
     try {
@@ -332,6 +331,37 @@ app.post('/check-user', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
     }
 });
+
+app.post('/forgot-pass', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const s3Content = await getFromS3("xmati-users", `${email}.txt`);
+        let data = await streamToString(s3Content);
+        data = JSON.parse(data);
+        let updatedData = { ...data, password }
+        
+        await saveToS3(
+                    "xmati-users",
+                    `${email}.txt`,
+                    `${JSON.stringify(updatedData)}`
+                );
+        res.status(200).send('Password updated');       
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, error: 'Something went wrong while updating the password' });
+    }
+});
+
+function streamToString(stream) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on("data", (chunk) => chunks.push(chunk));
+        stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+        stream.on("error", reject);
+    });
+}
+
 // Specify the port and start the server
 const PORT = 8000;
 app.listen(PORT, () => {

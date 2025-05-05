@@ -30,7 +30,7 @@ async function register(email, data) {
     }
 }
 
-async function updateUserPass(email, data) {
+async function updateUserPassOrProfile(email, data) {
     if (await checkUser(email)) {
         let stats = await setUser(email, data);
         if (stats) {
@@ -68,7 +68,6 @@ async function setUser(email, data) {
     }
 }
 
-
 async function getUser(email) {
     const s3Content = await s3Service.getFromS3("xmati-users", `${email}.txt`);
     const data = await streamToString(s3Content);
@@ -85,4 +84,4 @@ function streamToString(stream) {
     });
 }
 
-module.exports = { login, register, updateUserPass };
+module.exports = { login, register, updateUserPassOrProfile };
