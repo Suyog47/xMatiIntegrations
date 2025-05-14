@@ -9,6 +9,8 @@ const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-
 const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
 const { setWebhook } = require('./src/telegram/set-webhook');
 const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
+const { generateText } = require('./src/gemini-llm/index');
+const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const cors = require("cors");
@@ -255,6 +257,7 @@ app.post('/user-auth', async (req, res) => {
     }
 });
 
+
 app.post('/send-email', async (req, res) => {
     try {
         const { to, cc, bcc, subject, content } = req.body;
@@ -269,6 +272,7 @@ app.post('/send-email', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Failed to send email' });
     }
 });
+
 
 app.post('/save-bot', async (req, res) => {
     try {
@@ -285,6 +289,7 @@ app.post('/save-bot', async (req, res) => {
     }
 });
 
+
 app.post('/get-bots', async (req, res) => {
     try {
         const { email } = req.body;
@@ -300,6 +305,7 @@ app.post('/get-bots', async (req, res) => {
     }
 });
 
+
 app.post('/delete-bot', async (req, res) => {
     try {
         const { key } = req.body;
@@ -314,6 +320,7 @@ app.post('/delete-bot', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
     }
 });
+
 
 app.post('/check-user', async (req, res) => {
     try {
@@ -331,6 +338,7 @@ app.post('/check-user', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
     }
 });
+
 
 app.post('/forgot-pass', async (req, res) => {
     try {
@@ -352,6 +360,39 @@ app.post('/forgot-pass', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Something went wrong while updating the password' });
     }
 });
+
+
+app.post('/gemini-llm', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+
+        const result = await generateText(prompt);
+
+        console.log(result.text());
+        res.status(200).json({
+            response: result.text()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+app.post('/create-payment-intent', async (req, res) => {
+    const { amount, currency } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+
+    let response = await createPaymentIntent(amount, currency);
+
+    if(!response){
+        res.status(400).send('something went wrong')
+    }
+    else{
+        res.status(200).json({
+            client_secret: response
+        });
+    }
+});
+
 
 function streamToString(stream) {
     return new Promise((resolve, reject) => {

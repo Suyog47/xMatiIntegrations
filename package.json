@@ -15,6 +15,7 @@
     "@azure/arm-appservice": "^15.0.0",
     "@azure/arm-botservice": "^4.0.0",
     "@azure/identity": "^4.6.0",
+    "@google/generative-ai": "^0.24.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@smithy/node-http-handler": "^4.0.4",
     "@types/node": "^22.10.2",
@@ -28,7 +29,8 @@
     "nodemailer": "^6.10.0",
     "nodemon": "^3.1.9",
     "oci-common": "^2.100.2",
-    "oci-oda": "^2.100.2"
+    "oci-oda": "^2.100.2",
+    "stripe": "^18.1.0"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",
