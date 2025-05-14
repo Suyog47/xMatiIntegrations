@@ -21,7 +21,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors()); // Allow all origins
 
 
-
 // sample get
 app.get('/', (req, res) => {
     res.send('Hello, Express!');
