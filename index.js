@@ -6,20 +6,32 @@ const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-
 const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
 const { setWebhook } = require('./src/telegram/set-webhook');
 const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
-const { generateText } = require('./src/gemini-llm/index');
+const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
 const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
+const multer = require('multer');
+const { SpeechClient } = require('@google-cloud/speech');
 require('dotenv').config();
+app.use(cors()); // Allow all origins
+
+const upload = multer({
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
 
 // increase the limit of the file size to be accepted from frontend 
 app.use(express.json({ limit: '50mb' })); // Test with a higher limit
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(cors()); // Allow all origins
 
+const client = new SpeechClient({
+  keyFilename: 'gemini-service-account.json',
+  projectId: 'gen-lang-client-0617251816' // Your GCP project ID
+});
 
 // sample get
 app.get('/', (req, res) => {
@@ -372,6 +384,75 @@ app.post('/gemini-llm', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file received' });
+    }
+
+    console.log(req.file.buffer.length);
+
+    // Configure audio settings (MUST match frontend recording settings)
+    const audioConfig = {
+      content: req.file.buffer.toString('base64'),
+    };
+
+    const config = {
+      encoding: 'WEBM_OPUS',
+      sampleRateHertz: 48000,
+      languageCode: 'en-US',
+    };
+
+    // Use longRunningRecognize for audio > 1 minute
+    const [operation] = await client.longRunningRecognize({
+      audio: audioConfig,
+      config: config,
+    });
+
+    const [response] = await operation.promise();
+    const transcript = response.results
+      .map(result => result.alternatives[0].transcript)
+      .join('\n');
+
+      console.log('Transcript:', transcript);
+    res.json({ transcript });
+  } catch (error) {
+    console.error('Speech API Error:', error);
+    res.status(500).json({ 
+      error: 'Speech recognition failed',
+      details: error.message 
+    });
+  }
+});
+
+// app.post('/gemini-voice', async (req, res) => {
+//     try {
+//         // Get the audio file from FormData
+//         const audioFile = req.files.find(file => file.fieldname === 'audio');
+        
+//         if (!audioFile) {
+//             return res.status(400).json({ error: 'No audio file uploaded' });
+//         }
+
+//         // Convert the audio buffer to base64
+//         const audioContent = audioFile.buffer.toString('base64');
+
+//         // Call Google Speech-to-Text
+//         const result = await convertSpeechToText(audioContent);
+
+//         res.status(200).json({
+//             transcript: result
+//         });
+//     } catch (error) {
+//         console.error('Server error:', error);
+//         res.status(500).json({ 
+//             error: error.message || 'Audio processing failed',
+//             details: error.details // Google API error details if available
+//         });
+//     }
+// });
+
 
 
 app.post('/create-payment-intent', async (req, res) => {
