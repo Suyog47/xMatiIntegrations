@@ -10,6 +10,7 @@ const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
 const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
+const { format } = require('date-fns-tz');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -281,6 +282,33 @@ app.post('/send-email', async (req, res) => {
     }
 });
 
+
+app.post('/save-subscription', async (req, res) => {
+    const currentDate = new Date();
+    const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
+
+    const newDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+    const istNewDate = format(newDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' }) 
+
+    try {
+        const { key, subscription } = req.body;
+
+        const data = {
+            subscription: subscription,
+             createdAt: istCurrentDate,
+             till: istNewDate
+        }
+
+        let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
+        if (!result) {
+            return res.status(400).json({ status: false, error: 'Failed to save user subscription' });
+        }
+
+        return res.status(200).json({ status: true, message: 'Subscription data saved successfully' });
+    } catch (error) {
+        return res.status(500).json({ status: false, error: 'Something went wrong while saving the subscription' });
+    }
+});
 
 app.post('/save-bot', async (req, res) => {
     try {
