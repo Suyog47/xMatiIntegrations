@@ -308,7 +308,6 @@ app.post('/save-subscription', async (req, res) => {
             till: newDate
         }
 
-        console.log(data);
         let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
         if (!result) {
             return res.status(400).json({ status: false, msg: 'Failed to save user subscription' });

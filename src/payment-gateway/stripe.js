@@ -7,7 +7,7 @@ async function createPaymentIntent(amount, currency) {
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amount,
           currency: currency,
-          payment_method_types: ['card', 'link', 'cashapp', 'alipay'],
+          payment_method_types: ['card', 'link'],
           // automatic_payment_methods: {
           //   enabled: true, // Let Stripe handle payment method selection
           // }, 
