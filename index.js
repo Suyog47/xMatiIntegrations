@@ -287,8 +287,9 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     try {
-        const { key, subscription } = req.body;
+        const { key, subscription, duration } = req.body;
 
+        console.log(duration);
         const currentDate = new Date();
         let newDate;
         if (subscription === 'trial') {
@@ -296,7 +297,18 @@ app.post('/save-subscription', async (req, res) => {
             newDate = new Date(new Date().setDate(currentDate.getDate() + 15));
         } else {
             // Add 1 month
-            newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
+            if (duration === 'monthly') {
+                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
+            }
+            else if (duration === 'half-yearly') {
+                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
+            }
+            else if (duration === 'yearly') {
+                newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
+            }
+            else {
+                return res.status(400).json({ status: false, msg: 'Invalid duration' });
+            }
         }
 
         //const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
@@ -321,7 +333,7 @@ app.post('/save-subscription', async (req, res) => {
 
 
 app.post('/get-subscription', async (req, res) => {
-     try {
+    try {
         const { key } = req.body;
 
         let result = await getFromS3("xmati-subscriber", `${key}.txt`);
