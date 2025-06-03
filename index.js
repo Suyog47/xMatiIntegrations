@@ -1,4 +1,5 @@
 const express = require('express');
+const cron = require('node-cron');
 const { createBotReplica } = require('./src/amazon-lex/bot-functions/bot-replication');
 const { startConvo, getDatafromS3 } = require('./src/amazon-lex/bot-functions/bot-conversation');
 const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
@@ -289,7 +290,6 @@ app.post('/save-subscription', async (req, res) => {
     try {
         const { key, subscription, duration } = req.body;
 
-        console.log(duration);
         const currentDate = new Date();
         let newDate;
         if (subscription === 'trial') {
@@ -317,7 +317,8 @@ app.post('/save-subscription', async (req, res) => {
         const data = {
             subscription: subscription,
             createdAt: currentDate,
-            till: newDate
+            till: newDate,
+            duration
         }
 
         let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
@@ -371,7 +372,7 @@ app.post('/get-bots', async (req, res) => {
     try {
         const { email } = req.body;
 
-        let result = await getFromS3ByPrefix("xmatibots", email);
+        let result = await getFromS3ByPrefix("xmatibots", `${email}_`);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to get bot' });
         }
@@ -564,6 +565,97 @@ app.post('/create-payment-intent', async (req, res) => {
 });
 
 
+app.get('/send-expiry-email', async (req, res) => {
+    try {
+        // Retrieve all keys from the 'xmati-subscriber' bucket
+        const keys = await getFromS3ByPrefix('xmati-subscriber');
+
+        if (!keys || keys.length === 0) {
+            return res.status(404).json({ status: false, message: 'No subscriptions found' });
+        }
+
+        const currentDate = new Date();
+        // Normalize currentDate to midnight
+        const normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+
+        const expiryDetails = [];
+
+        for (const key of keys) {
+            try {
+                const data = JSON.parse(key.data);
+
+                // Validate and normalize the 'till' date
+                if (!data.till) {
+                    console.warn(`Skipping key ${key.key}: Missing 'till' value`);
+                    continue;
+                }
+
+                const tillDate = new Date(data.till);
+                if (isNaN(tillDate)) {
+                    console.warn(`Skipping key ${key.key}: Invalid 'till' value`);
+                    continue;
+                }
+
+                const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
+
+                // Calculate the difference in days
+                const timeDifference = normalizedTillDate - normalizedCurrentDate; // Difference in milliseconds
+                const daysRemaining = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // Convert to days
+
+                // Check if the daysRemaining matches the required values
+                // if (daysRemaining === 15 && data.subscription === 'trial') {
+                //     continue; // Skip this key
+                // }
+
+                if ([15, 7, 3, 1].includes(daysRemaining)) {
+                    expiryDetails.push({
+                        key: key.key,
+                        subscription: data.subscription,
+                        till: normalizedTillDate.toISOString(), // Convert to string for JSON response
+                        daysRemaining
+                    });
+
+                    await emailDraftSend(key.key, data.subscription, daysRemaining, normalizedTillDate);
+                }
+            } catch (error) {
+                console.error(`Error processing key ${key.key}:`, error.message);
+                continue; // Skip this key and move to the next
+            }
+        }
+
+        return res.status(200).json({
+            status: true,
+            message: 'Expiry details retrieved successfully',
+            data: expiryDetails
+        });
+    } catch (error) {
+        console.error('Error in send-expiry-email:', error);
+        return res.status(500).json({ status: false, message: 'Something went wrong', error: error.message });
+    }
+});
+
+async function emailDraftSend(key, subscription, days, tillDate) {
+    try {
+        // Send email to the user
+        const email = key.replace('.txt', '');
+        const subject = `Your Subscription is Expiring Soon`;
+
+        // Use HTML for better formatting
+        const content = `
+            <p>Dear User,</p>
+            <p>This is a reminder that your subscription (<strong>${subscription}</strong>) will expire in <strong>${days} day(s)</strong>, on <strong>${tillDate.toDateString()}</strong>.</p>
+            <p>Please renew your subscription on time to continue enjoying our services.</p>
+            <p>Thank you,<br>xMati</p>
+        `;
+
+        await sendEmail(email, null, null, subject, content);
+        console.log(`Email sent to ${email} about ${days} day(s) remaining.`);
+    } catch (emailError) {
+        console.error(`Failed to send email to ${email}:`, emailError.message);
+    }
+}
+
+
 function streamToString(stream) {
     return new Promise((resolve, reject) => {
         const chunks = [];
@@ -572,6 +664,18 @@ function streamToString(stream) {
         stream.on("error", reject);
     });
 }
+
+// Schedule a task to run every hour
+cron.schedule('0 * * * *', async () => {
+    console.log('Running cron job to call /send-expiry-email API');
+
+    try {
+        const response = await axios.get('http://localhost:8000/send-expiry-email');
+        console.log('Cron job executed successfully:', response.data.message);
+    } catch (error) {
+        console.error('Error executing cron job:', error.message);
+    }
+});
 
 // Specify the port and start the server
 const PORT = 8000;

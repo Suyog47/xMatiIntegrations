@@ -48,11 +48,11 @@ async function getFromS3(bucketName, key) {
     }
 }
 
-async function getFromS3ByPrefix(bucketName, email) {
+async function getFromS3ByPrefix(bucketName, prefix = '') {
     try {
         const listCommand = new ListObjectsV2Command({
             Bucket: bucketName,
-            Prefix: `${email}_`,
+            Prefix: prefix,
         });
 
         const listResponse = await s3.send(listCommand);
