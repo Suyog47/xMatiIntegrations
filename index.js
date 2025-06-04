@@ -18,6 +18,7 @@ const app = express();
 const multer = require('multer');
 const { SpeechClient } = require('@google-cloud/speech');
 const { TranslationServiceClient } = require('@google-cloud/translate');
+// const Queue = require('bull');
 require('dotenv').config();
 app.use(cors()); // Allow all origins
 
@@ -36,6 +37,7 @@ const client = new SpeechClient({
     //projectId: 'gen-lang-client-0617251816' // Your GCP project ID
 });
 const translationClient = new TranslationServiceClient();
+//const emailQueue = new Queue('send-expiry-email');
 
 // sample get
 app.get('/', (req, res) => {
@@ -288,7 +290,7 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     try {
-        const { key, subscription, duration } = req.body;
+        const { key, name, subscription, duration } = req.body;
 
         const currentDate = new Date();
         let newDate;
@@ -311,11 +313,12 @@ app.post('/save-subscription', async (req, res) => {
             }
         }
 
-        //const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
-        //const istNewDate = format(newDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' })
+        // const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
+        // const istNewDate = format(newDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' })
 
         const data = {
-            subscription: subscription,
+            name,
+            subscription,
             createdAt: currentDate,
             till: newDate,
             duration
@@ -603,19 +606,20 @@ app.get('/send-expiry-email', async (req, res) => {
                 const daysRemaining = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // Convert to days
 
                 // Check if the daysRemaining matches the required values
-                // if (daysRemaining === 15 && data.subscription === 'trial') {
-                //     continue; // Skip this key
-                // }
+                if (daysRemaining === 15 && data.subscription === 'trial') {
+                    continue; // Skip this key
+                }
 
                 if ([15, 7, 3, 1].includes(daysRemaining)) {
                     expiryDetails.push({
+                        name: data.name,
                         key: key.key,
                         subscription: data.subscription,
                         till: normalizedTillDate.toISOString(), // Convert to string for JSON response
                         daysRemaining
                     });
 
-                    await emailDraftSend(key.key, data.subscription, daysRemaining, normalizedTillDate);
+                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
@@ -634,18 +638,19 @@ app.get('/send-expiry-email', async (req, res) => {
     }
 });
 
-async function emailDraftSend(key, subscription, days, tillDate) {
+async function emailDraftSend(key, name, subscription, days, tillDate) {
     try {
         // Send email to the user
         const email = key.replace('.txt', '');
-        const subject = `Your Subscription is Expiring Soon`;
+        const subject = `Friendly Reminder: Your xMati Plan Renews Soon 🔄`;
 
         // Use HTML for better formatting
         const content = `
-            <p>Dear User,</p>
-            <p>This is a reminder that your subscription (<strong>${subscription}</strong>) will expire in <strong>${days} day(s)</strong>, on <strong>${tillDate.toDateString()}</strong>.</p>
-            <p>Please renew your subscription on time to continue enjoying our services.</p>
-            <p>Thank you,<br>xMati</p>
+            <p>Hii ${name ?? 'User'},</p>
+            <p>Your <strong>${subscription}</strong> subscription will auto-renew on <strong>${tillDate.toDateString()}</strong>.</p>
+            <p>Need to make changes? - <a href="https://www.app.xmati.ai" style="color: blue; text-decoration: underline;">Update payment method</a></p>
+            <p>Questions? We're here to help!</p>
+            <p><br>The xMati Team</p>
         `;
 
         await sendEmail(email, null, null, subject, content);
@@ -665,10 +670,11 @@ function streamToString(stream) {
     });
 }
 
-// Schedule a task to run every hour
-cron.schedule('0 * * * *', async () => {
-    console.log('Running cron job to call /send-expiry-email API');
 
+// Schedule a task to run every hour
+cron.schedule('*/15 * * * *', async () => {
+   console.log(`Cron job triggered at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+   console.log('In UTC', new Date().toISOString()); 
     try {
         const response = await axios.get('http://localhost:8000/send-expiry-email');
         console.log('Cron job executed successfully:', response.data.message);
@@ -676,6 +682,7 @@ cron.schedule('0 * * * *', async () => {
         console.error('Error executing cron job:', error.message);
     }
 });
+
 
 // Specify the port and start the server
 const PORT = 8000;
