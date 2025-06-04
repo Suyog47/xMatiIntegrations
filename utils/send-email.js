@@ -18,7 +18,7 @@ async function sendEmail(to, cc, bcc, subject, content) {
 
   // Define the email message
   let message = {
-    from: '"Xmati Chat Service" <xmatiservice@gmail.com>',
+    from: '"xMati Chat Service" <xmatiservice@gmail.com>',
     to: to,
     cc: cc,
     bcc: bcc,

@@ -12,6 +12,7 @@ const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { format } = require('date-fns-tz');
+const { welcomeSubscription, paymentReceiptEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -290,7 +291,7 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     try {
-        const { key, name, subscription, duration } = req.body;
+        const { key, name, subscription, duration, amount } = req.body;
 
         const currentDate = new Date();
         let newDate;
@@ -324,9 +325,22 @@ app.post('/save-subscription', async (req, res) => {
             duration
         }
 
+
         let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
         if (!result) {
             return res.status(400).json({ status: false, msg: 'Failed to save user subscription' });
+        }
+
+        const normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+        const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
+
+        // Send welcome email
+        await sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
+
+        // Send payment email
+        if (subscription !== 'trial') {
+            const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
+            await sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
         }
 
         return res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
@@ -353,7 +367,6 @@ app.post('/get-subscription', async (req, res) => {
         return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
     }
 });
-
 
 app.post('/save-bot', async (req, res) => {
     try {
