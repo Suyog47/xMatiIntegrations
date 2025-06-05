@@ -64,4 +64,54 @@ function paymentReceiptEmail(fullName, planName, billingCycle, amount, nextBilli
     };
 }
 
-module.exports = { welcomeSubscription, paymentReceiptEmail };
+function paymentFailedEmail(fullName, planName, amount) {
+    return {
+        subject: "Action Needed: Payment Failed for Your xMati Plan ❌",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>We couldn’t process your payment for the <strong>${planName}</strong> subscription of amount <strong>${amount}</strong>.</p>
+
+                <p><strong>🚨 Next Steps:</strong></p>
+                <ul>
+                    <li>Update Payment Method Now</li> Or
+                    <li>Retry payment manually: <a href="https://www.app.xmati.ai">Pay Now</a></li>
+                </ul>
+
+                <p>Need assistance? Reply to this email.</p>
+
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function renewalReminderEmail(fullName, planName, renewalDate, amount) {
+    return {
+        subject: "Friendly Reminder: Your xMati Plan Renews Soon 🔄",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Your <strong>${planName}</strong> subscription will auto-renew on <strong>${renewalDate}</strong>.</p>
+                <p><strong>📌 Amount:</strong> ${amount}</p>
+
+                <p><strong>Need to make changes?</strong></p>
+                <ul>
+                    <li><a href="https://www.app.xmati.ai">Switch plans</a></li>
+                </ul>
+
+                <p>Questions? We’re here to help!</p>
+
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+module.exports = { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail };

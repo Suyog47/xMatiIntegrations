@@ -12,7 +12,7 @@ const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { format } = require('date-fns-tz');
-const { welcomeSubscription, paymentReceiptEmail } = require('./templates/email_template');
+const { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -322,7 +322,8 @@ app.post('/save-subscription', async (req, res) => {
             subscription,
             createdAt: currentDate,
             till: newDate,
-            duration
+            duration,
+            amount
         }
 
 
@@ -367,6 +368,26 @@ app.post('/get-subscription', async (req, res) => {
         return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
     }
 });
+
+
+app.post('/failed-payment', async (req, res) => {
+    try {
+        const { email, name, subscription, amount } = req.body;
+
+        // Prepare the email content
+        const failedPaymentEmailTemplate = paymentFailedEmail(name, subscription, amount);
+
+        // Send the email
+        await sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
+
+        return res.status(200).json({ status: true, msg: 'Failed payment email sent successfully' });
+    }
+    catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, msg: 'Something went wrong while processing the failed payment email' });
+    }
+});
+
 
 app.post('/save-bot', async (req, res) => {
     try {
@@ -623,16 +644,16 @@ app.get('/send-expiry-email', async (req, res) => {
                     continue; // Skip this key
                 }
 
-                if ([15, 7, 3, 1].includes(daysRemaining)) {
-                    expiryDetails.push({
-                        name: data.name,
-                        key: key.key,
-                        subscription: data.subscription,
-                        till: normalizedTillDate.toISOString(), // Convert to string for JSON response
-                        daysRemaining
-                    });
+                if ([30, 15, 7, 3, 1].includes(daysRemaining)) {
+                    // expiryDetails.push({
+                    //     name: data.name,
+                    //     key: key.key,
+                    //     subscription: data.subscription,
+                    //     till: normalizedTillDate.toISOString(), // Convert to string for JSON response
+                    //     daysRemaining
+                    // });
 
-                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate);
+                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
@@ -651,22 +672,11 @@ app.get('/send-expiry-email', async (req, res) => {
     }
 });
 
-async function emailDraftSend(key, name, subscription, days, tillDate) {
+async function emailDraftSend(key, name, subscription, days, tillDate, amount) {
     try {
-        // Send email to the user
         const email = key.replace('.txt', '');
-        const subject = `Friendly Reminder: Your xMati Plan Renews Soon 🔄`;
-
-        // Use HTML for better formatting
-        const content = `
-            <p>Hii ${name ?? 'User'},</p>
-            <p>Your <strong>${subscription}</strong> subscription will auto-renew on <strong>${tillDate.toDateString()}</strong>.</p>
-            <p>Need to make changes? - <a href="https://www.app.xmati.ai" style="color: blue; text-decoration: underline;">Update payment method</a></p>
-            <p>Questions? We're here to help!</p>
-            <p><br>The xMati Team</p>
-        `;
-
-        await sendEmail(email, null, null, subject, content);
+        const emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount);
+        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
         console.log(`Email sent to ${email} about ${days} day(s) remaining.`);
     } catch (emailError) {
         console.error(`Failed to send email to ${email}:`, emailError.message);
@@ -686,8 +696,8 @@ function streamToString(stream) {
 
 // Schedule a task to run every hour
 cron.schedule('*/15 * * * *', async () => {
-   console.log(`Cron job triggered at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-   console.log('In UTC', new Date().toISOString()); 
+    console.log(`Cron job triggered at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+    console.log('In UTC', new Date().toISOString());
     try {
         const response = await axios.get('http://localhost:8000/send-expiry-email');
         console.log('Cron job executed successfully:', response.data.message);
