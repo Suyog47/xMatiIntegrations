@@ -695,11 +695,9 @@ function streamToString(stream) {
 
 
 // Schedule a task to run every hour
-cron.schedule('0 * * * *', async () => {
-    console.log(`Cron job triggered at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-    console.log('In UTC', new Date().toISOString());
+cron.schedule('0 6,18 * * * *', async () => {
     try {
-        const response = await axios.get('http://localhost:8000/send-expiry-email');
+        const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
         console.log('Cron job executed successfully:', response.data.message);
     } catch (error) {
         console.error('Error executing cron job:', error.message);
