@@ -25,13 +25,13 @@ app.use(cors()); // Allow all origins
 
 const upload = multer({
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 100 * 1024 * 1024 // 50MB limit
     }
 });
 
 // increase the limit of the file size to be accepted from frontend 
-app.use(express.json({ limit: '50mb' })); // Test with a higher limit
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' })); // Test with a higher limit
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 const client = new SpeechClient({
     keyFilename: 'gemini-service-account.json'
@@ -695,7 +695,7 @@ function streamToString(stream) {
 
 
 // Schedule a task to run every hour
-cron.schedule('*/15 * * * *', async () => {
+cron.schedule('0 * * * *', async () => {
     console.log(`Cron job triggered at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
     console.log('In UTC', new Date().toISOString());
     try {
