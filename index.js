@@ -295,6 +295,7 @@ app.post('/save-subscription', async (req, res) => {
 
         const currentDate = new Date();
         let newDate;
+
         if (subscription === 'trial') {
             // Add 15 days
             newDate = new Date(new Date().setDate(currentDate.getDate() + 15));
@@ -420,6 +421,19 @@ app.post('/get-bots', async (req, res) => {
     }
 });
 
+app.get('/get-all-bots', async (req, res) => {
+    try {
+
+        let result = await getFromS3ByPrefix("xmatibots", '');
+        if (!result) {
+            return res.status(400).json({ status: false, error: 'Failed to get bot' });
+        }
+
+        return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+    } catch (error) {
+        return res.status(500).json({ status: false, error: 'Something went wrong while getting the bot' });
+    }
+});
 
 app.post('/delete-bot', async (req, res) => {
     try {
@@ -644,7 +658,7 @@ app.get('/send-expiry-email', async (req, res) => {
                     continue; // Skip this key
                 }
 
-                if ([30, 15, 7, 3, 1].includes(daysRemaining)) {
+                if ([15, 7, 3, 1].includes(daysRemaining)) {
                     // expiryDetails.push({
                     //     name: data.name,
                     //     key: key.key,
@@ -695,7 +709,7 @@ function streamToString(stream) {
 
 
 // Schedule a task to run every hour
-cron.schedule('0 6,18 * * * *', async () => {
+cron.schedule('0 4, * * * *', async () => {
     try {
         const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
         console.log('Cron job executed successfully:', response.data.message);
