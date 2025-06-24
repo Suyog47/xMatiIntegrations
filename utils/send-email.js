@@ -8,12 +8,12 @@ async function sendEmail(to, cc, bcc, subject, content) {
     secure: false, // true for 465, false for other ports
     auth: {
       user: 'xmatiservice@gmail.com', // Replace with your email address
-      pass: 'ecbd sezb rfep nmzh' // Replace with your email password or app password
+      pass: 'nbex eoza dhnq dfps' // Replace with your email password or app password
     },
     requireTLS: true,
     tls: {
       rejectUnauthorized: false
-    }
+    },
   });
 
   // Define the email message

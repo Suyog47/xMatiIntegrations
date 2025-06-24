@@ -25,13 +25,13 @@ app.use(cors()); // Allow all origins
 
 const upload = multer({
     limits: {
-        fileSize: 100 * 1024 * 1024 // 50MB limit
+        fileSize: 1024 * 1024 * 1024 // 1GB
     }
 });
 
 // increase the limit of the file size to be accepted from frontend 
-app.use(express.json({ limit: '100mb' })); // Test with a higher limit
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(express.json({ limit: '1gb' }));
+app.use(express.urlencoded({ limit: '1gb', extended: true }));
 
 const client = new SpeechClient({
     keyFilename: 'gemini-service-account.json'
@@ -264,6 +264,8 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
+        //let maintenance = await getMaintenance();
+
         return res.status(status).json({ success, msg, s3Data });
     }
     catch (err) {
@@ -337,12 +339,12 @@ app.post('/save-subscription', async (req, res) => {
         const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
 
         // Send welcome email
-        await sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
+        sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
 
         // Send payment email
         if (subscription !== 'trial') {
             const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
-            await sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
+            sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
         }
 
         return res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
@@ -370,6 +372,49 @@ app.post('/get-subscription', async (req, res) => {
     }
 });
 
+app.post('/set-maintenance', async (req, res) => {
+    try {
+        const { status } = req.body;
+
+        // Save the maintenance status to S3
+        await saveToS3("xmati-extra", "maintenance-status.txt", JSON.stringify({ status }));
+
+        return res.status(200).json({ status: true, msg: 'Maintenance status updated successfully' });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, msg: 'Something went wrong while updating the maintenance status' });
+    }
+});
+
+app.get('/get-maintenance', async (req, res) => {
+    let data = await getMaintenance();
+
+    if (data.status) {
+        return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
+    }
+    else {
+        return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
+    }
+});
+
+async function getMaintenance() {
+    try {
+        let data = await getFromS3("xmati-extra", `maintenance-status.txt`);
+
+        if (!data) {
+            return { status: false };
+        }
+
+        let mStatus = await streamToString(data);
+        mStatus = JSON.parse(mStatus);
+
+        return { status: true, maintenance: mStatus.status }
+    }
+    catch (error) {
+        console.error('Error retrieving maintenance status:', error);
+        return { status: false };
+    }
+}
 
 app.post('/failed-payment', async (req, res) => {
     try {
@@ -709,10 +754,10 @@ function streamToString(stream) {
 
 
 // Schedule a task to run every hour
-cron.schedule('0 4, * * * *', async () => {
+cron.schedule('0 0 10 * * *', async () => {
     try {
         const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
-        console.log('Cron job executed successfully:', response.data.message);
+        console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
     }
