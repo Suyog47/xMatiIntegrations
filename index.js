@@ -21,7 +21,13 @@ const { SpeechClient } = require('@google-cloud/speech');
 const { TranslationServiceClient } = require('@google-cloud/translate');
 // const Queue = require('bull');
 require('dotenv').config();
-app.use(cors()); // Allow all origins
+app.use(cors());
+
+// ✅ Disable timeout before any heavy middlewares
+app.use((req, res, next) => {
+    res.setTimeout(0);
+    next();
+});
 
 const upload = multer({
     limits: {
@@ -29,9 +35,9 @@ const upload = multer({
     }
 });
 
-// increase the limit of the file size to be accepted from frontend 
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
+
 
 const client = new SpeechClient({
     keyFilename: 'gemini-service-account.json'
@@ -298,7 +304,7 @@ app.post('/save-subscription', async (req, res) => {
         const currentDate = new Date();
         let newDate;
 
-        if (subscription === 'trial') {
+        if (subscription === 'Trial') {
             // Add 15 days
             newDate = new Date(new Date().setDate(currentDate.getDate() + 15));
         } else {
@@ -644,22 +650,73 @@ app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
 //     }
 // });
 
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
+async function getOrCreateCustomerByEmail(email) {
+    const existingCustomers = await stripe.customers.list({
+        email,
+        limit: 1
+    })
+
+    if (existingCustomers.data.length > 0) {
+        return existingCustomers.data[0]  // Reuse existing customer
+    }
+
+    // Create new one if not found
+    return await stripe.customers.create({
+        email,
+        metadata: { guest: 'true' }
+    })
+}
 
 app.post('/create-payment-intent', async (req, res) => {
-    const { amount, currency } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+    const { amount, currency, email } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
-    let response = await createPaymentIntent(amount, currency);
+    const customer = await getOrCreateCustomerByEmail(email)
+
+    let response = await await stripe.paymentIntents.create({
+        amount,
+        currency,
+        customer: customer.id,
+        metadata: {
+            email
+        }
+    })
 
     if (!response) {
-        res.status(400).send('something went wrong')
+        return res.status(400).send('something went wrong')
     }
     else {
-        res.status(200).json({
+        return res.status(200).json({
             client_secret: response
         });
     }
 });
 
+app.post('/get-stripe-transactions', async (req, res) => {
+    const { email } = req.body // or use Stripe customer ID if saved
+
+    try {
+        // Optional: fetch customer by email (if you store metadata)
+        const customers = await stripe.customers.list({ email, limit: 1 })
+        if (!customers.data.length) {
+            return res.status(404).json({ error: 'Customer not found' })
+        }
+
+        const customerId = customers.data[0].id
+
+        // Get latest 50 charges
+        const charges = await stripe.charges.list({
+            customer: customerId,
+            limit: 50,
+        })
+
+        return res.json({ charges: charges.data })
+    } catch (err) {
+        console.error(err)
+        return res.status(500).json({ error: 'Failed to retrieve transactions' })
+    }
+})
 
 app.get('/send-expiry-email', async (req, res) => {
     try {
