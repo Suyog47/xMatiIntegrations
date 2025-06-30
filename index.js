@@ -653,26 +653,43 @@ app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 async function getOrCreateCustomerByEmail(email) {
-    const existingCustomers = await stripe.customers.list({
-        email,
-        limit: 1
-    })
+    try {
 
-    if (existingCustomers.data.length > 0) {
-        return existingCustomers.data[0]  // Reuse existing customer
+        const existingCustomers = await stripe.customers.list({
+            email,
+            limit: 1
+        })
+
+        if (existingCustomers.data.length > 0) {
+            return existingCustomers.data[0]  // Reuse existing customer
+        }
+
+        // Create new one if not found
+        return await stripe.customers.create({
+            email,
+            metadata: { guest: 'true' }
+        })
     }
-
-    // Create new one if not found
-    return await stripe.customers.create({
-        email,
-        metadata: { guest: 'true' }
-    })
+    catch (err) {
+        console.log(err);
+        return false;
+    }
 }
 
-app.post('/create-payment-intent', async (req, res) => {
-    const { amount, currency, email } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+app.post('/create-stripe-customer', async (req, res) => {
+    const { email } = req.body;
 
-    const customer = await getOrCreateCustomerByEmail(email)
+    let response = await getOrCreateCustomerByEmail(email);
+
+    return res.status(200).send({ status: true, msg: "stripe customer created", data: response.id });
+});
+
+app.post('/create-payment-intent', async (req, res) => {
+    const { amount, currency, customerId, email } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+
+    const customer = (customerId && Object.keys(customerId).length > 0)
+        ? customerId
+        : await getOrCreateCustomerByEmail(email);
 
     let response = await await stripe.paymentIntents.create({
         amount,
