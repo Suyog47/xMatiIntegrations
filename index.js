@@ -305,8 +305,19 @@ app.post('/save-subscription', async (req, res) => {
         let newDate;
 
         if (subscription === 'Trial') {
+            let days = 1;
+    
+            if(duration === '15d'){
+                // Add 15 days
+                days = 15
+            }
+            else if (duration === '3d'){
+                // Add 3 days
+                days = 3
+            }
+
             // Add 15 days
-            newDate = new Date(new Date().setDate(currentDate.getDate() + 15));
+            newDate = new Date(new Date().setDate(currentDate.getDate() + days));
         } else {
             // Add 1 month
             if (duration === 'monthly') {
@@ -697,7 +708,8 @@ app.post('/create-payment-intent', async (req, res) => {
         customer: customer.id,
         metadata: {
             email
-        }
+        },
+        expand: ['charges'],
     })
 
     if (!response) {
@@ -709,6 +721,24 @@ app.post('/create-payment-intent', async (req, res) => {
         });
     }
 });
+
+
+app.post('/refund', async (req, res) => {
+ try {
+    const { chargeId, reason } = req.body
+
+    const refund = await stripe.refunds.create({
+      charge: chargeId,
+      reason: reason || 'requested_by_customer',
+    })
+
+    res.status(200).json({ success: true, refund })
+  } catch (err) {
+    console.error('Refund error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+});
+
 
 app.post('/get-stripe-transactions', async (req, res) => {
     const { email } = req.body // or use Stripe customer ID if saved
@@ -726,6 +756,7 @@ app.post('/get-stripe-transactions', async (req, res) => {
         const charges = await stripe.charges.list({
             customer: customerId,
             limit: 50,
+            expand: ['data.refunds'],
         })
 
         return res.json({ charges: charges.data })
