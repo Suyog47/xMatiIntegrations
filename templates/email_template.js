@@ -19,7 +19,7 @@ function welcomeSubscription(fullName, planName, billingCycle, nextChargeDate, o
                     ${otherFeatures.map(feature => `<li>${feature}</li>`).join('')}
                 </ul>
 
-                <p><strong>📅 Billing Cycle:</strong> ${billingCycle} | <strong>Next charge:</strong> ${nextChargeDate}</p>
+                <p><strong>📅 Billing Cycle:</strong> ${billingCycle === '15d' ? '15 Days' : billingCycle} | <strong>Next charge:</strong> ${nextChargeDate}</p>
 
                 <p><strong>🚀 Get Started Now:</strong></p>
                 <ul>
@@ -45,7 +45,7 @@ function paymentReceiptEmail(fullName, planName, billingCycle, amount, nextBilli
             <body style="font-family: Arial, sans-serif; line-height: 1.6;">
                 <p>Hi ${fullName},</p>
 
-                <p>Your <strong>${planName}</strong> subscription plan has been successfully renewed for <strong>${billingCycle} billing cycle</strong>.</p>
+                <p>Your <strong>${planName}</strong> subscription plan has been successfully renewed for <strong>${billingCycle === '15d' ? '15 Days' : billingCycle} billing cycle</strong>.</p>
 
                 <p><strong>📄 Invoice Summary:</strong></p>
                 <ul>

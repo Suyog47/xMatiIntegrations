@@ -1,5 +1,8 @@
 const express = require('express');
 const cron = require('node-cron');
+const { Parser } = require('json2csv');
+const fs = require('fs');
+const path = require('path');
 const { createBotReplica } = require('./src/amazon-lex/bot-functions/bot-replication');
 const { startConvo, getDatafromS3 } = require('./src/amazon-lex/bot-functions/bot-conversation');
 const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
@@ -306,12 +309,12 @@ app.post('/save-subscription', async (req, res) => {
 
         if (subscription === 'Trial') {
             let days = 1;
-    
-            if(duration === '15d'){
+
+            if (duration === '15d') {
                 // Add 15 days
                 days = 15
             }
-            else if (duration === '3d'){
+            else if (duration === '3d') {
                 // Add 3 days
                 days = 3
             }
@@ -696,7 +699,7 @@ app.post('/create-stripe-customer', async (req, res) => {
 });
 
 app.post('/create-payment-intent', async (req, res) => {
-    const { amount, currency, customerId, email } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+    const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
     const customer = (customerId && Object.keys(customerId).length > 0)
         ? customerId
@@ -707,7 +710,9 @@ app.post('/create-payment-intent', async (req, res) => {
         currency,
         customer: customer.id,
         metadata: {
-            email
+            email,
+            subscription,
+            duration
         },
         expand: ['charges'],
     })
@@ -724,27 +729,26 @@ app.post('/create-payment-intent', async (req, res) => {
 
 
 app.post('/refund', async (req, res) => {
- try {
-    const { chargeId, reason } = req.body
+    try {
+        const { chargeId, reason } = req.body
 
-    const refund = await stripe.refunds.create({
-      charge: chargeId,
-      reason: reason || 'requested_by_customer',
-    })
+        const refund = await stripe.refunds.create({
+            charge: chargeId,
+            reason: reason || 'requested_by_customer',
+        })
 
-    res.status(200).json({ success: true, refund })
-  } catch (err) {
-    console.error('Refund error:', err)
-    res.status(500).json({ success: false, error: err.message })
-  }
+        res.status(200).json({ success: true, refund })
+    } catch (err) {
+        console.error('Refund error:', err)
+        res.status(500).json({ success: false, error: err.message })
+    }
 });
 
 
 app.post('/get-stripe-transactions', async (req, res) => {
-    const { email } = req.body // or use Stripe customer ID if saved
+    const { email } = req.body
 
     try {
-        // Optional: fetch customer by email (if you store metadata)
         const customers = await stripe.customers.list({ email, limit: 1 })
         if (!customers.data.length) {
             return res.status(404).json({ error: 'Customer not found' })
@@ -752,19 +756,57 @@ app.post('/get-stripe-transactions', async (req, res) => {
 
         const customerId = customers.data[0].id
 
-        // Get latest 50 charges
+        // Get latest 100 charges
         const charges = await stripe.charges.list({
             customer: customerId,
-            limit: 50,
+            limit: 100,
             expand: ['data.refunds'],
         })
-
+        
         return res.json({ charges: charges.data })
     } catch (err) {
         console.error(err)
         return res.status(500).json({ error: 'Failed to retrieve transactions' })
     }
 })
+
+
+// CSV download endpoint
+app.post('/download-csv', (req, res) => {
+    try {
+        const { data, email } = req.body;
+
+        if (!Array.isArray(data)) {
+            return res.status(400).send('Expected an array of objects');
+        }
+
+
+        const fields = Object.keys(data[0])
+        const parser = new Parser({ fields })
+        const csv = parser.parse(data)
+
+        // Save file temporarily
+        const filePath = path.join(__dirname, `${email}-data.csv`);
+        fs.writeFileSync(filePath, csv);
+
+        // Use res.download to trigger download
+        res.download(filePath, `${email}-data.csv`, (err) => {
+            if (err) {
+                console.error('Download error:', err);
+                res.status(500).send('Download failed');
+            }
+
+            // delete file after sending
+            fs.unlinkSync(filePath);
+        });
+
+        // res.status(200).send('success');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Failed to generate CSV');
+    }
+});
+
 
 app.get('/send-expiry-email', async (req, res) => {
     try {
