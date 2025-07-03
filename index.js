@@ -362,7 +362,7 @@ app.post('/save-subscription', async (req, res) => {
         sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
 
         // Send payment email
-        if (subscription !== 'trial') {
+        if (subscription !== 'Trial') {
             const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
             sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
         }
@@ -763,7 +763,7 @@ app.post('/get-stripe-transactions', async (req, res) => {
             expand: ['data.refunds'],
         })
         
-        return res.json({ charges: charges.data })
+        return res.status(200).json({ charges: charges.data })
     } catch (err) {
         console.error(err)
         return res.status(500).json({ error: 'Failed to retrieve transactions' })
@@ -846,7 +846,7 @@ app.get('/send-expiry-email', async (req, res) => {
                 const daysRemaining = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // Convert to days
 
                 // Check if the daysRemaining matches the required values
-                if (daysRemaining === 15 && data.subscription === 'trial') {
+                if (daysRemaining === 15 && data.subscription === 'Trial') {
                     continue; // Skip this key
                 }
 

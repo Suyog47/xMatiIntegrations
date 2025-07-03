@@ -10,7 +10,7 @@ function welcomeSubscription(fullName, planName, billingCycle, nextChargeDate, o
 
                 <p><strong>✨ Key Features:</strong></p>
                 <ul>
-                    <li>${planName === 'trial' ? '3' : (planName === 'Starter') ? '3' : '5'} bots creation</li>
+                    <li>${planName === 'Trial' ? '3' : (planName === 'Starter') ? '3' : '5'} bots creation</li>
                     <li>AI-powered chatbots</li>
                     <li>Real-time analytics</li>
                     <li>Readymade Bot templates</li>
