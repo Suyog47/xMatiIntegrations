@@ -246,6 +246,14 @@ app.post('/user-auth', async (req, res) => {
                 status = 200;
                 success = true;
                 msg = "User registered successfully";
+
+                // Save trial subscription
+                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "15d", 0);
+                if (!response.status) {
+                    status = 400;
+                    success = false;
+                    msg = response.msg || "Failed to save trial subscription";
+                }
             }
             else {
                 status = 400;
@@ -301,9 +309,19 @@ app.post('/send-email', async (req, res) => {
 
 
 app.post('/save-subscription', async (req, res) => {
-    try {
-        const { key, name, subscription, duration, amount } = req.body;
+    const { key, name, subscription, duration, amount } = req.body;
+    let result = await saveSubscriptionToS3(key, name, subscription, duration, amount)
 
+    console.log(result);
+    if (!result.status) {
+        return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
+    }
+
+    res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
+});
+
+async function saveSubscriptionToS3(key, name, subscription, duration, amount) {
+    try {
         const currentDate = new Date();
         let newDate;
 
@@ -333,7 +351,7 @@ app.post('/save-subscription', async (req, res) => {
                 newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
             }
             else {
-                return res.status(400).json({ status: false, msg: 'Invalid duration' });
+                return { status: false, msg: 'Invalid duration' };
             }
         }
 
@@ -352,7 +370,7 @@ app.post('/save-subscription', async (req, res) => {
 
         let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
         if (!result) {
-            return res.status(400).json({ status: false, msg: 'Failed to save user subscription' });
+            return { status: false, msg: 'Failed to save user subscription' };
         }
 
         const normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
@@ -367,12 +385,11 @@ app.post('/save-subscription', async (req, res) => {
             sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
         }
 
-        return res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
+        return { status: true };
     } catch (error) {
-        return res.status(500).json({ status: false, msg: 'Something went wrong while saving the subscription' });
+        return { status: false, msg: 'Something went wrong while saving the subscription' };
     }
-});
-
+}
 
 app.post('/get-subscription', async (req, res) => {
     try {
@@ -762,7 +779,7 @@ app.post('/get-stripe-transactions', async (req, res) => {
             limit: 100,
             expand: ['data.refunds'],
         })
-        
+
         return res.status(200).json({ charges: charges.data })
     } catch (err) {
         console.error(err)
