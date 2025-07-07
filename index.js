@@ -15,7 +15,13 @@ const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { format } = require('date-fns-tz');
-const { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail } = require('./templates/email_template');
+const { welcomeSubscription,
+    paymentReceiptEmail,
+    paymentFailedEmail,
+    renewalReminderEmail,
+    profileUpdateConfirmationEmail,
+    passwordChangeConfirmationEmail,
+    paymentMethodUpdateConfirmationEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -262,7 +268,7 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
-        if (from === "updatePass" || from === "updateProfile") {
+        if (from === "updatePass" || from === "updateProfile" || from === "updatePayment") {
             result = await updateUserPassOrProfile(data.email, data);
             if (result === "success") {
                 status = 200;
@@ -279,9 +285,26 @@ app.post('/user-auth', async (req, res) => {
                 success = false;
                 msg = "Something went wrong";
             }
+
+            if (from === "updateProfile") {
+                // Send email notification for profile update
+                const profileChangeEmailTemplate = profileUpdateConfirmationEmail(data.fullName);
+                sendEmail(data.email, null, null, profileChangeEmailTemplate.subject, profileChangeEmailTemplate.body);
+            }
+
+            if (from === "updatePass") {
+                // Send email notification for password change
+                const passChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
+                sendEmail(data.email, null, null, passChangeEmailTemplate.subject, passChangeEmailTemplate.body);
+            }
+
+            if (from === "updatePayment") {
+                // Send email notification for payment card update
+                const paymentMethodUpdateEmailTemplate = paymentMethodUpdateConfirmationEmail(data.fullName);
+                sendEmail(data.email, null, null, paymentMethodUpdateEmailTemplate.subject, paymentMethodUpdateEmailTemplate.body);
+            }
         }
 
-        //let maintenance = await getMaintenance();
 
         return res.status(status).json({ success, msg, s3Data });
     }
@@ -312,7 +335,6 @@ app.post('/save-subscription', async (req, res) => {
     const { key, name, subscription, duration, amount } = req.body;
     let result = await saveSubscriptionToS3(key, name, subscription, duration, amount)
 
-    console.log(result);
     if (!result.status) {
         return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
     }
@@ -565,6 +587,11 @@ app.post('/forgot-pass', async (req, res) => {
             `${email}.txt`,
             `${JSON.stringify(updatedData)}`
         );
+
+        // Send confirmation email
+        const passwordChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
+        sendEmail(email, null, null, passwordChangeEmailTemplate.subject, passwordChangeEmailTemplate.body);
+        
         res.status(200).send('Password updated');
     } catch (error) {
         console.log(error);

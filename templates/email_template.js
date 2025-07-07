@@ -81,7 +81,6 @@ function paymentFailedEmail(fullName, planName, amount) {
                 </ul>
 
                 <p>Need assistance? Reply to this email.</p>
-
                 <p>The xMati Team</p>
             </body>
         </html>
@@ -106,7 +105,6 @@ function renewalReminderEmail(fullName, planName, renewalDate, amount) {
                 </ul>
 
                 <p>Questions? We’re here to help!</p>
-
                 <p>The xMati Team</p>
             </body>
         </html>
@@ -114,4 +112,60 @@ function renewalReminderEmail(fullName, planName, renewalDate, amount) {
     };
 }
 
-module.exports = { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail };
+function passwordChangeConfirmationEmail(fullName) {
+    return {
+        subject: "Password Updated – Secure Your xMati Account",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Your xMati password was successfully changed. If this wasn’t you, act now: contact our support for help or reset your password.</p>
+
+                <p><strong>Pro Tip:</strong> Use a unique, strong password (e.g., "PurpleMango@42!") and never share it.</p>
+
+                <p>Stay secure,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function profileUpdateConfirmationEmail(fullName) {
+    return {
+        subject: "Your xMati Profile Is Updated",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>We’ve updated your profile details as requested.</p>
+
+                <p>Thanks for keeping your info current!</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function paymentMethodUpdateConfirmationEmail(fullName) {
+    return {
+        subject: "Your Payment Method Is Securely Updated",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Your xMati billing details are now up to date!</p>
+
+                <p>Cheers,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+module.exports = { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail, passwordChangeConfirmationEmail, profileUpdateConfirmationEmail, paymentMethodUpdateConfirmationEmail };
