@@ -24,6 +24,7 @@ const { welcomeSubscription,
     paymentMethodUpdateConfirmationEmail,
     botCreationSuccessEmail,
     botDeletionConfirmationEmail,
+    forgotPasswordOtpEmail,
     botNameUpdateEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
@@ -501,7 +502,7 @@ app.post('/save-bot', async (req, res) => {
     try {
         const { fullName, organizationName, key, data } = req.body;
 
-        
+
         let result = await saveToS3("xmatibots", key, JSON.stringify(data));
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
@@ -562,7 +563,7 @@ app.post('/delete-bot', async (req, res) => {
         let email = key.split('_')[0]
         let botName = (key.split('_')[1]).split('-')[1];
 
-         // Send email notification
+        // Send email notification
         const botDeleteEmail = botDeletionConfirmationEmail(fullName, botName);
         sendEmail(email, null, null, botDeleteEmail.subject, botDeleteEmail.body);
 
@@ -579,14 +580,21 @@ app.post('/check-user', async (req, res) => {
 
         let result = await keyExists("xmati-users", `${email}.txt`);
         if (result) {
-            return res.status(400).json({ status: false, message: 'user exists' });
+            // Generate a random 4-digit OTP
+            const otp = Math.floor(1000 + Math.random() * 9000);
+
+            // Send OTP email notification
+            const forgotEmail = forgotPasswordOtpEmail(email, otp);
+            sendEmail(email, null, null, forgotEmail.subject, forgotEmail.body);
+
+            return res.status(200).json({ status: true, message: 'User exists', otp });
         } else {
-            return res.status(200).json({ status: true, message: 'No User' });
+            return res.status(400).json({ status: false, message: 'No User' });
         }
 
     } catch (error) {
         console.log(error);
-        return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
+        return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
     }
 });
 

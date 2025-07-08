@@ -244,6 +244,28 @@ function botNameUpdateEmail(firstName, previousBotName, updatedBotName) {
     };
 }
 
+function forgotPasswordOtpEmail(email, otpCode) {
+    return {
+        subject: "Reset Your Password – OTP Inside 🔒",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${email},</p>
+
+                <p>We received a request to reset your xMati account password. Use the OTP below to proceed:</p>
+
+                <p><strong>🔑 Your OTP:</strong> <span style="font-size: 18px; font-weight: bold;">${otpCode}</span></p>
+
+                <p><strong>⚠️ Important:</strong> If you didn’t request a password reset, please ignore this email or contact our support team immediately.</p>
+
+                <p>Stay secure,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 module.exports = {
     welcomeSubscription,
     paymentReceiptEmail,
@@ -254,5 +276,6 @@ module.exports = {
     paymentMethodUpdateConfirmationEmail,
     botCreationSuccessEmail,
     botDeletionConfirmationEmail,
-    botNameUpdateEmail
+    botNameUpdateEmail,
+    forgotPasswordOtpEmail
 };
