@@ -21,7 +21,10 @@ const { welcomeSubscription,
     renewalReminderEmail,
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
-    paymentMethodUpdateConfirmationEmail } = require('./templates/email_template');
+    paymentMethodUpdateConfirmationEmail,
+    botCreationSuccessEmail,
+    botDeletionConfirmationEmail,
+    botNameUpdateEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -496,12 +499,20 @@ app.post('/failed-payment', async (req, res) => {
 
 app.post('/save-bot', async (req, res) => {
     try {
-        const { key, data } = req.body;
+        const { fullName, organizationName, key, data } = req.body;
 
+        
         let result = await saveToS3("xmatibots", key, JSON.stringify(data));
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
         }
+
+        let email = key.split('_')[0]
+        let botName = (key.split('_')[1]).split('-')[1];
+
+        // Send email notification
+        const botSuccessEmail = botCreationSuccessEmail(fullName, organizationName, botName);
+        sendEmail(email, null, null, botSuccessEmail.subject, botSuccessEmail.body);
 
         return res.status(200).json({ status: true, message: 'Bot saved successfully' });
     } catch (error) {
@@ -541,12 +552,19 @@ app.get('/get-all-bots', async (req, res) => {
 
 app.post('/delete-bot', async (req, res) => {
     try {
-        const { key } = req.body;
+        const { fullName, key } = req.body;
 
         let result = await deleteFromS3("xmatibots", key);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to delete bot' });
         }
+
+        let email = key.split('_')[0]
+        let botName = (key.split('_')[1]).split('-')[1];
+
+         // Send email notification
+        const botDeleteEmail = botDeletionConfirmationEmail(fullName, botName);
+        sendEmail(email, null, null, botDeleteEmail.subject, botDeleteEmail.body);
 
         return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
     } catch (error) {
@@ -591,7 +609,7 @@ app.post('/forgot-pass', async (req, res) => {
         // Send confirmation email
         const passwordChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
         sendEmail(email, null, null, passwordChangeEmailTemplate.subject, passwordChangeEmailTemplate.body);
-        
+
         res.status(200).send('Password updated');
     } catch (error) {
         console.log(error);

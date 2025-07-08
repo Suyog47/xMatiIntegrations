@@ -168,4 +168,91 @@ function paymentMethodUpdateConfirmationEmail(fullName) {
     };
 }
 
-module.exports = { welcomeSubscription, paymentReceiptEmail, paymentFailedEmail, renewalReminderEmail, passwordChangeConfirmationEmail, profileUpdateConfirmationEmail, paymentMethodUpdateConfirmationEmail };
+function botCreationSuccessEmail(fullName, businessName, botName) {
+    return {
+        subject: `Your AI Bot Is Ready to Supercharge ${businessName}!`,
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Say hello to your new 24/7 team member! Your AI bot, <strong>${botName}</strong>, is live and ready to:</p>
+                <ul>
+                    <li>✅ Engage visitors instantly – No more missed leads after hours</li>
+                    <li>✅ Capture & qualify leads </li>
+                    <li>✅ Handle FAQs – Free your team to focus on high-value tasks</li>
+                </ul>
+
+                <p><strong>Next Steps:</strong></p>
+                <ol>
+                    <li>Customize your bot’s personality to match your brand</li>
+                    <li>Track performance with real-time analytics</li>
+                </ol>
+
+                <p>Need help? Contact our support—we’re happy to guide you!</p>
+
+                <p>Welcome to the future of customer engagement,</p>
+                <p>The xMati Team</p>
+                <p>[MIST Global LLC]</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function botDeletionConfirmationEmail(firstName, botName) {
+    return {
+        subject: "We’ve Deleted Your Bot",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${firstName},</p>
+
+                <p>Your bot, <strong>${botName}</strong>, has been successfully deleted.</p>
+
+                <p>If this was a mistake, please contact support to restore your bot.</p>
+
+                <p>Best,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function botNameUpdateEmail(firstName, previousBotName, updatedBotName) {
+    return {
+        subject: "Your Bot Just Got a New Name!",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${firstName},</p>
+
+                <p>Meet your rebranded AI assistant!</p>
+                <ul>
+                    <li>🔹 Old Name: <strong>${previousBotName}</strong></li>
+                    <li>🔹 New Name: <strong>${updatedBotName}</strong></li>
+                </ul>
+
+                <p><strong>Why this matters:</strong> A clear, catchy name helps customers remember (and trust!) your bot.</p>
+
+                <p>Happy automating,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+module.exports = {
+    welcomeSubscription,
+    paymentReceiptEmail,
+    paymentFailedEmail,
+    renewalReminderEmail,
+    passwordChangeConfirmationEmail,
+    profileUpdateConfirmationEmail,
+    paymentMethodUpdateConfirmationEmail,
+    botCreationSuccessEmail,
+    botDeletionConfirmationEmail,
+    botNameUpdateEmail
+};
