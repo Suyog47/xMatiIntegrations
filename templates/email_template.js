@@ -19,7 +19,7 @@ function welcomeSubscription(fullName, planName, billingCycle, nextChargeDate, o
                     ${otherFeatures.map(feature => `<li>${feature}</li>`).join('')}
                 </ul>
 
-                <p><strong>📅 Billing Cycle:</strong> ${billingCycle === '15d' ? '15 Days' : billingCycle} | <strong>Next charge:</strong> ${nextChargeDate}</p>
+                <p><strong>📅 Billing Cycle:</strong> ${billingCycle === '15d' ? '15 Days' : billingCycle === '3d' ? '3 Days' : billingCycle} | <strong>Next charge:</strong> ${nextChargeDate}</p>
 
                 <p><strong>🚀 Get Started Now:</strong></p>
                 <ul>

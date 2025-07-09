@@ -337,7 +337,7 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     const { key, name, subscription, duration, amount } = req.body;
-    let result = await saveSubscriptionToS3(key, name, subscription, duration, amount)
+    let result = await saveSubscriptionToS3(key, name, subscription, duration, amount, false)
 
     if (!result.status) {
         return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
@@ -346,7 +346,7 @@ app.post('/save-subscription', async (req, res) => {
     res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
 });
 
-async function saveSubscriptionToS3(key, name, subscription, duration, amount) {
+async function saveSubscriptionToS3(key, name, subscription, duration, amount, isCancelled = false) {
     try {
         const currentDate = new Date();
         let newDate;
@@ -399,11 +399,14 @@ async function saveSubscriptionToS3(key, name, subscription, duration, amount) {
             return { status: false, msg: 'Failed to save user subscription' };
         }
 
-        const normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
-        const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
+        let normalizedNewDate
+        if (!isCancelled) {
+            normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+            const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
 
-        // Send welcome email
-        sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
+            // Send welcome email
+            sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
+        }
 
         // Send payment email
         if (subscription !== 'Trial') {
@@ -413,7 +416,7 @@ async function saveSubscriptionToS3(key, name, subscription, duration, amount) {
 
         return { status: true };
     } catch (error) {
-        return { status: false, msg: 'Something went wrong while saving the subscription' };
+        return { status: false, msg: error.message || 'Something went wrong while saving the subscription' };
     }
 }
 
@@ -500,7 +503,7 @@ app.post('/failed-payment', async (req, res) => {
 
 app.post('/save-bot', async (req, res) => {
     try {
-        const { fullName, organizationName, key, data } = req.body;
+        const { fullName, organizationName, key, data, from } = req.body;
 
 
         let result = await saveToS3("xmatibots", key, JSON.stringify(data));
@@ -511,9 +514,11 @@ app.post('/save-bot', async (req, res) => {
         let email = key.split('_')[0]
         let botName = (key.split('_')[1]).split('-')[1];
 
-        // Send email notification
-        const botSuccessEmail = botCreationSuccessEmail(fullName, organizationName, botName);
-        sendEmail(email, null, null, botSuccessEmail.subject, botSuccessEmail.body);
+        if (from == 'user') {
+            // Send email notification
+            const botSuccessEmail = botCreationSuccessEmail(fullName, organizationName, botName);
+            sendEmail(email, null, null, botSuccessEmail.subject, botSuccessEmail.body);
+        }
 
         return res.status(200).json({ status: true, message: 'Bot saved successfully' });
     } catch (error) {
@@ -800,14 +805,19 @@ app.post('/create-payment-intent', async (req, res) => {
 
 app.post('/refund', async (req, res) => {
     try {
-        const { chargeId, reason } = req.body
+        const { chargeId, reason, email, fullName } = req.body
 
         const refund = await stripe.refunds.create({
             charge: chargeId,
             reason: reason || 'requested_by_customer',
         })
 
-        res.status(200).json({ success: true, refund })
+        let response = await saveSubscriptionToS3(email, fullName, "Trial", "3d", 0, true);
+        if (!response.status) {
+            return res.status(400).json({ success: true, refund })
+        }
+
+        return res.status(200).json({ success: true, refund })
     } catch (err) {
         console.error('Refund error:', err)
         res.status(500).json({ success: false, error: err.message })
