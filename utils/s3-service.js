@@ -1,5 +1,6 @@
 "use strict";
 const { NodeHttpHandler } = require("@smithy/node-http-handler");
+const { Upload } = require('@aws-sdk/lib-storage');
 const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 require('dotenv').config();
 
@@ -10,8 +11,9 @@ const awsSecretAccessKey = process.env.AWS_SECRET_KEY;
 const s3 = new S3Client({
     region: 'us-east-1',
     requestHandler: new NodeHttpHandler({
-        requestTimeout: 30000 // 30 seconds
-      }),
+        requestTimeout: 300000,  // 5 minutes
+        connectionTimeout: 300000  // 5 minutes
+    }),
     credentials: {
         accessKeyId: awsAccessKeyId,
         secretAccessKey: awsSecretAccessKey,
@@ -20,12 +22,27 @@ const s3 = new S3Client({
 
 async function saveToS3(bucketName, key, content) {
     try {
-        const command = new PutObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-            Body: content,
+        const parallelUpload = new Upload({
+            client: s3,
+            params: {
+                Bucket: bucketName,
+                Key: key,
+                Body: content,
+                ContentType: 'application/json'
+            },
+            queueSize: 4,          // Concurrent parts
+            partSize: 1024 * 1024 * 20, // 20MB chunks
+            leavePartsOnError: false
         });
-        await s3.send(command);
+        // const command = new PutObjectCommand({
+        //     Bucket: bucketName,
+        //     Key: key,
+        //     Body: content,
+        // });
+        // await s3.send(command);
+
+        // Wait for the upload to complete
+        await parallelUpload.done();
         return true;
     } catch (error) {
         console.error("Error saving botId to S3:", error);

@@ -12,6 +12,7 @@
   "dependencies": {
     "@aws-sdk/client-lex-runtime-v2": "^3.714.0",
     "@aws-sdk/client-s3": "^3.715.0",
+    "@aws-sdk/lib-storage": "^3.842.0",
     "@azure/arm-appservice": "^15.0.0",
     "@azure/arm-botservice": "^4.0.0",
     "@azure/identity": "^4.6.0",
