@@ -33,10 +33,16 @@ const multer = require('multer');
 const { SpeechClient } = require('@google-cloud/speech');
 const { TranslationServiceClient } = require('@google-cloud/translate');
 // const Queue = require('bull');
+const http = require('http');
 require('dotenv').config();
 app.use(cors());
 
-// ✅ Disable timeout before any heavy middlewares
+const server = http.createServer(app);
+
+// Disable timeout at server level
+server.timeout = 0;
+
+//Disable timeout before any heavy middlewares
 app.use((req, res, next) => {
     res.setTimeout(0);
     next();
@@ -993,6 +999,6 @@ cron.schedule('0 0 10 * * *', async () => {
 
 // Specify the port and start the server
 const PORT = 8000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}/`);
 });
