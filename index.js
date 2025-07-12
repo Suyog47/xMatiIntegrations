@@ -780,6 +780,7 @@ app.post('/create-stripe-customer', async (req, res) => {
 });
 
 app.post('/create-payment-intent', async (req, res) => {
+    try{
     const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
     const customer = (customerId && Object.keys(customerId).length > 0)
@@ -799,13 +800,17 @@ app.post('/create-payment-intent', async (req, res) => {
     })
 
     if (!response) {
-        return res.status(400).send('something went wrong')
+        return res.status(400).send('something went wrong while getting payement intent')
     }
     else {
         return res.status(200).json({
             client_secret: response
         });
     }
+}
+catch(err){
+    return res.status(400).send('something went wrong' + err.message);
+}
 });
 
 
@@ -852,7 +857,7 @@ app.post('/get-stripe-transactions', async (req, res) => {
         return res.status(200).json({ charges: charges.data })
     } catch (err) {
         console.error(err)
-        return res.status(500).json({ error: 'Failed to retrieve transactions' })
+        return res.status(400).json({ error: 'Failed to retrieve transactions' })
     }
 })
 
