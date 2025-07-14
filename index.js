@@ -343,7 +343,7 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     const { key, name, subscription, duration, amount } = req.body;
-    let result = await saveSubscriptionToS3(key, name, subscription, duration, amount, false)
+    let result = await saveSubscriptionToS3(key, name, subscription, duration, 0, amount, false)
 
     if (!result.status) {
         return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
@@ -352,7 +352,7 @@ app.post('/save-subscription', async (req, res) => {
     res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
 });
 
-async function saveSubscriptionToS3(key, name, subscription, duration, amount, isCancelled = false) {
+async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
     try {
         const currentDate = new Date();
         let newDate;
@@ -381,6 +381,9 @@ async function saveSubscriptionToS3(key, name, subscription, duration, amount, i
             }
             else if (duration === 'yearly') {
                 newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
+            }
+            else if (duration === 'custom') {
+                newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
             }
             else {
                 return { status: false, msg: 'Invalid duration' };
@@ -813,25 +816,65 @@ catch(err){
 }
 });
 
-
-app.post('/refund', async (req, res) => {
+function calculateRefundDetails(startDate, expiryDate) {
     try {
-        const { chargeId, reason, email, fullName } = req.body
+        const currentDate = new Date(); // Current date
+        const start = new Date(startDate); // Subscription start date
+        const expiry = new Date(expiryDate); // Subscription expiry date
 
-        const refund = await stripe.refunds.create({
-            charge: chargeId,
-            reason: reason || 'requested_by_customer',
-        })
-
-        let response = await saveSubscriptionToS3(email, fullName, "Trial", "3d", 0, true);
-        if (!response.status) {
-            return res.status(400).json({ success: true, refund })
+        // Ensure the current date is within the subscription period
+        if (currentDate < start || currentDate > expiry) {
+            return { status: false, message: 'Current date is outside the subscription period' };
         }
 
-        return res.status(200).json({ success: true, refund })
+        // Calculate the end of the current subscription cycle month
+        const currentCycleEnd = new Date(start.getFullYear(), start.getMonth() + Math.floor((currentDate - start) / (1000 * 60 * 60 * 24 * 30)) + 1, start.getDate());
+
+        // Calculate remaining days in the current subscription cycle month
+        const daysRemainingInCycle = Math.round((currentCycleEnd - currentDate) / (1000 * 60 * 60 * 24)); // Convert milliseconds to days
+
+        // Calculate remaining months in the subscription
+        const remainingMonths = Math.round((expiry - currentCycleEnd) / (1000 * 60 * 60 * 24 * 30)); // Approximate months remaining
+
+        return {
+            status: true,
+            daysRemainingInCycle,
+            remainingMonths,
+        };
+    } catch (error) {
+        console.error('Error calculating refund details:', error.message);
+        return { status: false, message: 'Failed to calculate refund details', error: error.message };
+    }
+}
+
+app.post('/cancel-subscription', async (req, res) => {
+    try {
+        const { chargeId, reason, email, fullName, subscription, amount, start, expiry } = req.body
+
+         // Calculate refund details
+        const refundDetails = calculateRefundDetails(start, expiry);
+        if (!refundDetails.status) {
+            return res.status(400).json({ success: false, message: refundDetails.message });
+        }
+
+        let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
+        if (!response.status) {
+            return res.status(400).json({ success: true , message: response.msg || 'Failed to save subscription data' });
+        }
+
+        // const refund = await stripe.refunds.create({
+        //     charge: chargeId,
+        //     reason: reason || 'requested_by_customer',
+        // });
+
+        return res.status(200).json({
+            success: true,
+            // refund,
+            refundDetails
+        });
     } catch (err) {
-        console.error('Refund error:', err)
-        res.status(500).json({ success: false, error: err.message })
+        console.error('Refund error:', err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
