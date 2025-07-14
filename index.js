@@ -408,9 +408,8 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
             return { status: false, msg: 'Failed to save user subscription' };
         }
 
-        let normalizedNewDate
+        let normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
         if (!isCancelled) {
-            normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
             const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
 
             // Send welcome email
@@ -706,9 +705,6 @@ app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
             targetLanguageCode: 'en-US'
         });
 
-        console.log('Transcript:', transcript);
-        console.log('Translation:', translation.translations[0].translatedText);
-
         res.json({ transcript: translation.translations[0].translatedText });
 
     } catch (error) {
@@ -783,63 +779,93 @@ app.post('/create-stripe-customer', async (req, res) => {
 });
 
 app.post('/create-payment-intent', async (req, res) => {
-    try{
-    const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+    try {
+        const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
-    const customer = (customerId && Object.keys(customerId).length > 0)
-        ? customerId
-        : await getOrCreateCustomerByEmail(email);
+        const customer = (customerId && Object.keys(customerId).length > 0)
+            ? customerId
+            : await getOrCreateCustomerByEmail(email);
 
-    let response = await await stripe.paymentIntents.create({
-        amount,
-        currency,
-        customer: customer.id,
-        metadata: {
-            email,
-            subscription,
-            duration
-        },
-        expand: ['charges'],
-    })
+        let response = await await stripe.paymentIntents.create({
+            amount,
+            currency,
+            customer: customer.id,
+            metadata: {
+                email,
+                subscription,
+                duration
+            },
+            expand: ['charges'],
+        })
 
-    if (!response) {
-        return res.status(400).send('something went wrong while getting payement intent')
+        if (!response) {
+            return res.status(400).send('something went wrong while getting payement intent')
+        }
+        else {
+            return res.status(200).json({
+                client_secret: response
+            });
+        }
     }
-    else {
-        return res.status(200).json({
-            client_secret: response
-        });
+    catch (err) {
+        return res.status(400).send('something went wrong' + err.message);
     }
-}
-catch(err){
-    return res.status(400).send('something went wrong' + err.message);
-}
 });
 
-function calculateRefundDetails(startDate, expiryDate) {
+function calculateRefundDetails(startDate, expiryDate, totalAmount) {
     try {
-        const currentDate = new Date(); // Current date
-        const start = new Date(startDate); // Subscription start date
-        const expiry = new Date(expiryDate); // Subscription expiry date
+        const currentDate = new Date();
+        const start = new Date(startDate);
+        const expiry = new Date(expiryDate);
 
         // Ensure the current date is within the subscription period
         if (currentDate < start || currentDate > expiry) {
             return { status: false, message: 'Current date is outside the subscription period' };
         }
 
-        // Calculate the end of the current subscription cycle month
-        const currentCycleEnd = new Date(start.getFullYear(), start.getMonth() + Math.floor((currentDate - start) / (1000 * 60 * 60 * 24 * 30)) + 1, start.getDate());
+        // Total number of months in the subscription
+        let totalMonths = 0;
+        let temp = new Date(start);
+        while (temp < expiry) {
+            totalMonths++;
+            temp.setMonth(temp.getMonth() + 1);
+        }
 
-        // Calculate remaining days in the current subscription cycle month
-        const daysRemainingInCycle = Math.round((currentCycleEnd - currentDate) / (1000 * 60 * 60 * 24)); // Convert milliseconds to days
+        // Find the current cycle number (0-based)
+        let currentCycleStart = new Date(start);
+        let cycleNumber = 0;
+        while (currentCycleStart <= currentDate) {
+            const nextCycleStart = new Date(currentCycleStart);
+            nextCycleStart.setMonth(nextCycleStart.getMonth() + 1);
 
-        // Calculate remaining months in the subscription
-        const remainingMonths = Math.round((expiry - currentCycleEnd) / (1000 * 60 * 60 * 24 * 30)); // Approximate months remaining
+            if (currentDate < nextCycleStart) {
+                break;
+            }
+            currentCycleStart = nextCycleStart;
+            cycleNumber++;
+        }
 
+        // Get end of current cycle
+        const currentCycleEnd = new Date(currentCycleStart);
+        currentCycleEnd.setMonth(currentCycleEnd.getMonth() + 1);
+
+        // Remaining days in the current cycle
+        const msInDay = 1000 * 60 * 60 * 24;
+        const daysRemainingInCycle = Math.ceil((currentCycleEnd - currentDate) / msInDay);
+
+        // Full months remaining after the current cycle
+        let remainingMonths = totalMonths - (cycleNumber + 1); // +1 to exclude current cycle
+
+        // Monthly amount
+        const monthlyAmount = totalAmount / totalMonths;
+
+        // Refund only for full months remaining
+        const refundAmount = remainingMonths * monthlyAmount;
         return {
             status: true,
             daysRemainingInCycle,
             remainingMonths,
+            refundAmount: refundAmount.toFixed(2),
         };
     } catch (error) {
         console.error('Error calculating refund details:', error.message);
@@ -847,29 +873,37 @@ function calculateRefundDetails(startDate, expiryDate) {
     }
 }
 
+// Example usage in the refund API
 app.post('/cancel-subscription', async (req, res) => {
     try {
-        const { chargeId, reason, email, fullName, subscription, amount, start, expiry } = req.body
+        const { chargeId, reason, email, fullName, subscription, amount, start, expiry } = req.body;
 
-         // Calculate refund details
-        const refundDetails = calculateRefundDetails(start, expiry);
+         // Convert amount to an integer
+        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
+
+        // Calculate refund details
+        const refundDetails = calculateRefundDetails(start, expiry, numericAmount);
         if (!refundDetails.status) {
             return res.status(400).json({ success: false, message: refundDetails.message });
         }
 
+
         let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
         if (!response.status) {
-            return res.status(400).json({ success: true , message: response.msg || 'Failed to save subscription data' });
+            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
         }
 
-        // const refund = await stripe.refunds.create({
-        //     charge: chargeId,
-        //     reason: reason || 'requested_by_customer',
-        // });
+        // refund the amount
+        if (refundDetails.refundAmount > 0.00) {
+            const refund = await stripe.refunds.create({
+                charge: chargeId,
+                amount: Math.round(refundDetails.refundAmount * 100), // Stripe expects the amount in cents
+                reason: reason || 'requested_by_customer',
+            });
+        }
 
         return res.status(200).json({
             success: true,
-            // refund,
             refundDetails
         });
     } catch (err) {
