@@ -11,7 +11,7 @@ const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversat
 const { setWebhook } = require('./src/telegram/set-webhook');
 const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
 const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
-const { createPaymentIntent } = require('./src/payment-gateway/stripe');
+// const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { format } = require('date-fns-tz');
@@ -782,35 +782,82 @@ app.post('/create-payment-intent', async (req, res) => {
     try {
         const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
-        const customer = (customerId && Object.keys(customerId).length > 0)
-            ? customerId
-            : await getOrCreateCustomerByEmail(email);
+        let response = await createPaymentIntent(amount, currency, customerId, email, subscription, duration);
 
-        let response = await await stripe.paymentIntents.create({
-            amount,
-            currency,
-            customer: customer.id,
-            metadata: {
-                email,
-                subscription,
-                duration
-            },
-            expand: ['charges'],
-        })
-
-        if (!response) {
+        if (!response.success) {
             return res.status(400).send('something went wrong while getting payement intent')
         }
-        else {
-            return res.status(200).json({
-                client_secret: response
-            });
-        }
+
+        return res.status(200).json({
+            client_secret: response.data
+        });
+
     }
     catch (err) {
         return res.status(400).send('something went wrong' + err.message);
     }
 });
+
+async function createPaymentIntent(amount, currency, customerId, email, subscription, duration) {
+
+    const customer = (customerId && Object.keys(customerId).length > 0)
+        ? customerId
+        : await getOrCreateCustomerByEmail(email);
+
+    let response = await await stripe.paymentIntents.create({
+        amount,
+        currency,
+        customer: customer.id,
+        metadata: {
+            email,
+            subscription,
+            duration
+        },
+        expand: ['charges'],
+    })
+
+    if (!response) {
+        return { success: false };
+    }
+    else {
+        return { success: true , data: response };
+    }
+}
+
+// app.post('/make-payment', async (req, res) => {
+//     try {
+//         const { clientSecret, cardDetails, subscription, duration, amount } = req.body;
+//         let response = await makePayment(clientSecret, cardDetails, subscription, duration);
+
+//         if (!response.success) {
+//             return res.status(400).json({ success: false, error: response.error || 'Failed to make payment' });
+//         }
+       
+//         return res.status(200).json({ success: true, message: 'Payment successful', paymentIntent: response.paymentIntent });
+//     } catch (error) {
+//         console.error('Error making payment:', error.message);
+//         return res.status(500).json({ success: false, error: 'Failed to make payment' });
+//     }
+// });
+
+// async function makePayment(clientSecret, cardDetails, subscription, duration){
+//         const { error: paymentError, paymentIntent } = await stripe.paymentIntents.confirm(clientSecret, {
+//             payment_method: {
+//                 card: cardDetails, // Card details passed from the frontend
+//                 metadata: {
+//                     subscription, // Subscription type
+//                     duration      // Duration of the subscription
+//                 }
+//             }
+//         });
+
+//         if (paymentError) {
+//             return { success: false , error: paymentError.message };
+//         }
+
+//         return { success: true, paymentIntent };
+// }
+
 
 function calculateRefundDetails(startDate, expiryDate, totalAmount) {
     try {
@@ -861,6 +908,7 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
 
         // Refund only for full months remaining
         const refundAmount = remainingMonths * monthlyAmount;
+
         return {
             status: true,
             daysRemainingInCycle,
@@ -873,12 +921,52 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
     }
 }
 
+// app.post('/attach-payment-method', async (req, res) => {
+//     const { email, cardDetails } = req.body;
+
+//     try {
+//         // Get or create a Stripe customer using the email
+//         const customer = await getOrCreateCustomerByEmail(email);
+
+//         if (!customer) {
+//             return res.status(400).json({ success: false, message: 'Failed to create or retrieve customer' });
+//         }
+
+//         // Create a payment method
+//         const paymentMethod = await stripe.paymentMethods.create({
+//             type: 'card',
+//             card: {
+//                 number: cardDetails.number,
+//                 exp_month: cardDetails.exp_month,
+//                 exp_year: cardDetails.exp_year,
+//                 cvc: cardDetails.cvc,
+//             },
+//         });
+
+//         // Attach the payment method to the customer
+//         await stripe.paymentMethods.attach(paymentMethod.id, { customer: customer.id });
+
+//         // Set the payment method as the default for the customer
+//         await stripe.customers.update(customer.id, {
+//             invoice_settings: { default_payment_method: paymentMethod.id },
+//         });
+
+//         res.json({ success: true, customerId: customer.id, paymentMethodId: paymentMethod.id });
+//     } catch (error) {
+//         console.error('Error attaching payment method:', error.message);
+//         res.status(500).json({ success: false, message: error.message });
+//     }
+// });
+
+
 // Example usage in the refund API
+
+
 app.post('/cancel-subscription', async (req, res) => {
     try {
         const { chargeId, reason, email, fullName, subscription, amount, start, expiry } = req.body;
 
-         // Convert amount to an integer
+        // Convert amount to an integer
         const numericAmount = parseFloat(amount.replace(/^\$/, ''));
 
         // Calculate refund details
@@ -1077,7 +1165,6 @@ cron.schedule('0 0 10 * * *', async () => {
         console.error('Error executing cron job:', error.message);
     }
 });
-
 
 // Specify the port and start the server
 const PORT = 8000;
