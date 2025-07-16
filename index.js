@@ -771,34 +771,85 @@ async function getOrCreateCustomerByEmail(email) {
 }
 
 app.post('/create-stripe-customer', async (req, res) => {
-    const { email } = req.body;
+    const { email, paymentMethodId } = req.body;
 
-    let response = await getOrCreateCustomerByEmail(email);
+    try {
+        // Get or create a Stripe customer
+        const customer = await getOrCreateCustomerByEmail(email);
 
-    return res.status(200).send({ status: true, msg: "stripe customer created", data: response.id });
+        if (!customer) {
+            return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
+        }
+
+        if (paymentMethodId == '') { 
+            return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
+        }
+
+        // Attach the payment method to the customer
+        await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
+
+        // Set the payment method as the default for the customer
+        await stripe.customers.update(customer.id, {
+            invoice_settings: { default_payment_method: paymentMethodId },
+        });
+
+        return res.status(200).json({
+            success: true,
+            msg: 'Stripe customer created and payment method attached successfully',
+            customerId: customer.id,
+            paymentMethodId: paymentMethodId,
+        });
+    } catch (error) {
+        console.error('Error creating Stripe customer:', error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
 });
+
 
 app.post('/create-payment-intent', async (req, res) => {
     try {
-        const { amount, currency, customerId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+        const { amount, currency, customerId, paymentMethodId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
 
-        let response = await createPaymentIntent(amount, currency, customerId, email, subscription, duration);
-
+        let response = await createPaymentIntent(amount, currency, customerId, paymentMethodId, email, subscription, duration);
         if (!response.success) {
             return res.status(400).send('something went wrong while getting payement intent')
         }
 
         return res.status(200).json({
-            client_secret: response.data
+            client_secret: response.data,
+            card_data: response.card.cardDetails,
         });
-
     }
     catch (err) {
         return res.status(400).send('something went wrong' + err.message);
     }
 });
 
-async function createPaymentIntent(amount, currency, customerId, email, subscription, duration) {
+
+async function getCardDetails(paymentMethodId) {
+    try {
+        const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+        if (!paymentMethod || paymentMethod.type !== 'card') {
+            return { success: false, message: 'Invalid or non-card payment method' };
+        }
+
+        const cardDetails = {
+            brand: paymentMethod.card.brand,
+            last4: paymentMethod.card.last4,
+            exp_month: paymentMethod.card.exp_month,
+            exp_year: paymentMethod.card.exp_year,
+        };
+
+        return { success: true, cardDetails };
+    } catch (error) {
+        console.error('Error retrieving card details:', error.message);
+        return { success: false, message: error.message };
+    }
+}
+
+
+async function createPaymentIntent(amount, currency, customerId, paymentMethodId, email, subscription, duration) {
 
     const customer = (customerId && Object.keys(customerId).length > 0)
         ? customerId
@@ -808,6 +859,7 @@ async function createPaymentIntent(amount, currency, customerId, email, subscrip
         amount,
         currency,
         customer: customer.id,
+        payment_method: paymentMethodId, 
         metadata: {
             email,
             subscription,
@@ -820,8 +872,12 @@ async function createPaymentIntent(amount, currency, customerId, email, subscrip
         return { success: false };
     }
     else {
-        return { success: true , data: response };
+         // Get card details
+        const cardDetailsResponse = await getCardDetails(paymentMethodId);
+        return { success: true, data: response, card: cardDetailsResponse };
     }
+
+    
 }
 
 // app.post('/make-payment', async (req, res) => {
@@ -832,7 +888,7 @@ async function createPaymentIntent(amount, currency, customerId, email, subscrip
 //         if (!response.success) {
 //             return res.status(400).json({ success: false, error: response.error || 'Failed to make payment' });
 //         }
-       
+
 //         return res.status(200).json({ success: true, message: 'Payment successful', paymentIntent: response.paymentIntent });
 //     } catch (error) {
 //         console.error('Error making payment:', error.message);
@@ -857,6 +913,52 @@ async function createPaymentIntent(amount, currency, customerId, email, subscrip
 
 //         return { success: true, paymentIntent };
 // }
+
+app.post('/create-stripe-subscription', async (req, res) => {
+    try {
+        const { customerId, subscription, duration } = req.body;
+
+        // Validate required fields
+        if (!customerId || !subscription || !duration) {
+            return res.status(400).json({ success: false, message: 'Customer ID, subscription, and duration are required' });
+        }
+
+        // Map subscription and duration to priceId
+        const priceKey = `STRIPE_${subscription.toUpperCase()}-${duration.toUpperCase()}`;
+        console.log('Price Key:', priceKey.trim());
+        const priceId = process.env[priceKey.trim()];
+
+        console.log('Creating subscription with priceId:', priceId);
+        if (!priceId) {
+            return res.status(400).json({ success: false, message: `Invalid subscription or duration: ${subscription}, ${duration}` });
+        }
+
+        // Create the subscription
+        const subscriptionResponse = await stripe.subscriptions.create({
+            customer: customerId,
+            items: [{ price: priceId }],
+            payment_behavior: 'default_incomplete',
+            metadata: {
+                subscription,
+                duration
+            },
+            expand: ['latest_invoice.payment_intent'], // Expand payment intent for additional details
+        });
+
+        if (!subscriptionResponse) {
+            return res.status(400).json({ success: false, message: 'Failed to create subscription' });
+        }
+
+        // Return subscription details
+        return res.status(200).json({
+            success: true,
+            subscriptionId: subscriptionResponse.id,
+        });
+    } catch (error) {
+        console.error('Error creating subscription:', error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 
 function calculateRefundDetails(startDate, expiryDate, totalAmount) {
