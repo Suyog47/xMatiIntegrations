@@ -34,6 +34,7 @@ const { SpeechClient } = require('@google-cloud/speech');
 const { TranslationServiceClient } = require('@google-cloud/translate');
 // const Queue = require('bull');
 const http = require('http');
+
 require('dotenv').config();
 app.use(cors());
 
@@ -57,13 +58,15 @@ const upload = multer({
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
 
+// Initialize Stripe
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
 
 const client = new SpeechClient({
     keyFilename: 'gemini-service-account.json'
     //projectId: 'gen-lang-client-0617251816' // Your GCP project ID
 });
 const translationClient = new TranslationServiceClient();
-//const emailQueue = new Queue('send-expiry-email');
 
 // sample get
 app.get('/', (req, res) => {
@@ -71,136 +74,111 @@ app.get('/', (req, res) => {
 });
 
 
-// Endpoint to create a Lex bot
-app.post('/lexbot', async (req, res) => {
-    try {
-        const { botName, apiUrl, template } = req.body;
+// // Endpoint to create a Lex bot
+// app.post('/lexbot', async (req, res) => {
+//     try {
+//         const { botName, apiUrl, template } = req.body;
 
-        const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
-        const id = generateRandomId(10);
-        const name = `${botName}-${id}`;
-        const ApiUrl = apiUrl;
-        await createBotReplica(name, templateUrl, ApiUrl);
-        return res.status(200).json({ message: 'Lex Bot Successfully Created!', botId: name });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
-
-
-// Endpoint to talk to Lex bot
-app.post('/lexbot/talk', async (req, res) => {
-    try {
-        const { input, botId } = req.body;
-        var data = await getDatafromS3(botId + ".txt");
-
-        var response = await startConvo(input, data.toString().split("-")[0], data.toString().split("-")[1]);    // sends the botId to start the convo with bot
-        return res.status(200).json({ message: response });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
+//         const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
+//         const id = generateRandomId(10);
+//         const name = `${botName}-${id}`;
+//         const ApiUrl = apiUrl;
+//         await createBotReplica(name, templateUrl, ApiUrl);
+//         return res.status(200).json({ message: 'Lex Bot Successfully Created!', botId: name });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
 
-app.post('/azurebot', async () => {
-    const azureTenantId = process.env.AZURE_TENANT_ID;
-    const azureClientId = process.env.AZURE_CLIENT_ID;
-    const azureClientSecret = process.env.AZURE_CLIENT_SECRET;
+// // Endpoint to talk to Lex bot
+// app.post('/lexbot/talk', async (req, res) => {
+//     try {
+//         const { input, botId } = req.body;
+//         var data = await getDatafromS3(botId + ".txt");
 
-    const tenantId = azureTenantId;
-    const clientId = azureClientId; // Service Principal Client ID
-    const clientSecret = azureClientSecret; // Service Principal Client Secret
-
-    try {
-        const { botName, template } = req.body;
-
-        const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
-
-        // Authenticate using the Service Principal
-        const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-
-        const id = generateRandomId(10);
-        const name = `${botName}-${id}`;           //name for the resources
-        await createAppRegistration(credential, name);
-
-        return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
+//         var response = await startConvo(input, data.toString().split("-")[0], data.toString().split("-")[1]);    // sends the botId to start the convo with bot
+//         return res.status(200).json({ message: response });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
 
-// Endpoint to talk to azure bot
-app.post('/azurebot/talk', async (req, res) => {
-    try {
-        const { input, botId } = req.body;
-        var data = await getDatafromS3(botId + ".txt");
+// app.post('/azurebot', async () => {
+//     const azureTenantId = process.env.AZURE_TENANT_ID;
+//     const azureClientId = process.env.AZURE_CLIENT_ID;
+//     const azureClientSecret = process.env.AZURE_CLIENT_SECRET;
 
-        var res = await startConversation(input, 'sampleId', data.toString().split("-")[0]);
-        return res.status(200).json({ message: response });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
+//     const tenantId = azureTenantId;
+//     const clientId = azureClientId; // Service Principal Client ID
+//     const clientSecret = azureClientSecret; // Service Principal Client Secret
 
+//     try {
+//         const { botName, template } = req.body;
 
-app.post('/oraclebot', async () => {
-    try {
-        const { botName, template } = req.body;
+//         const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
 
-        const id = generateRandomId(10);
-        const name = `${botName}-${id}`;           //name for the resources
+//         // Authenticate using the Service Principal
+//         const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
 
-        await cloningDigitalAssistant(name);
-        return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
+//         const id = generateRandomId(10);
+//         const name = `${botName}-${id}`;           //name for the resources
+//         await createAppRegistration(credential, name);
+
+//         return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
 
-// Endpoint to talk to azure bot
-app.post('/oraclebot/talk', async (req, res) => {
-    try {
-        const { input, botId } = req.body;
+// // Endpoint to talk to azure bot
+// app.post('/azurebot/talk', async (req, res) => {
+//     try {
+//         const { input, botId } = req.body;
+//         var data = await getDatafromS3(botId + ".txt");
 
-        await sendUserPrompt(input);    // sends the botId to start the convo with bot
-        return res.status(200).json({ message: response });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err });
-    }
-});
-
-
-// Dummy post endpoint
-app.post('/sample', async (req, res) => {
-    res.status(200).json({ message: 'Called from client server:- Appointment booked successfully' });
-});
+//         var res = await startConversation(input, 'sampleId', data.toString().split("-")[0]);
+//         return res.status(200).json({ message: response });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
 
-// Telegram endpoint
-app.get('/telegram', async (req, res) => {
-    const update = req.body;
+// app.post('/oraclebot', async () => {
+//     try {
+//         const { botName, template } = req.body;
 
-    // let result = await axios.post(`https://api.telegram.org/bot7328885090:AAHYDkmDwWRry6GfxBHNWEuba9Cjagc2NBA/sendMessage`, {
-    //     chat_id: '5476355152',
-    //     text: `You said: hello`,
-    // });
+//         const id = generateRandomId(10);
+//         const name = `${botName}-${id}`;           //name for the resources
 
-    //let result = await axios.get(`https://api.telegram.org/bot7328885090:AAHYDkmDwWRry6GfxBHNWEuba9Cjagc2NBA/getMe`);
+//         await cloningDigitalAssistant(name);
+//         return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
-    let result = await axios.post(`https://api.telegram.org/bot7328885090:AAHYDkmDwWRry6GfxBHNWEuba9Cjagc2NBA/setWebhook`, {
-        url: 'https://8ad3-120-138-97-166.ngrok-free.app/telegram',
-    });
 
-    res.status(200).json({ 'data': update.message });
-});
+// // Endpoint to talk to azure bot
+// app.post('/oraclebot/talk', async (req, res) => {
+//     try {
+//         const { input, botId } = req.body;
+
+//         await sendUserPrompt(input);    // sends the botId to start the convo with bot
+//         return res.status(200).json({ message: response });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ error: err });
+//     }
+// });
 
 
 // telegram webhook endpoint
@@ -372,22 +350,23 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
             // Add 15 days
             newDate = new Date(new Date().setDate(currentDate.getDate() + days));
         } else {
-            // Add 1 month
-            if (duration === 'monthly') {
-                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
-            }
-            else if (duration === 'half-yearly') {
-                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
-            }
-            else if (duration === 'yearly') {
-                newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
-            }
-            else if (duration === 'custom') {
-                newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
-            }
-            else {
-                return { status: false, msg: 'Invalid duration' };
-            }
+            // // Add 1 month
+            // if (duration === 'monthly') {
+            //     newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
+            // }
+            // else if (duration === 'half-yearly') {
+            //     newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
+            // }
+            // else if (duration === 'yearly') {
+            //     newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
+            // }
+            // else if (duration === 'custom') {
+            //     newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
+            // }
+            // else {
+            //     return { status: false, msg: 'Invalid duration' };
+            // }
+            newDate = new Date(new Date().setDate(currentDate.getDate() + 0));
         }
 
         // const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
@@ -639,82 +618,82 @@ app.post('/forgot-pass', async (req, res) => {
 });
 
 
-app.post('/gemini-llm', async (req, res) => {
-    try {
-        const { prompt } = req.body;
+// app.post('/gemini-llm', async (req, res) => {
+//     try {
+//         const { prompt } = req.body;
 
-        const result = await generateText(prompt);
+//         const result = await generateText(prompt);
 
-        console.log(result.text());
-        res.status(200).json({
-            response: result.text()
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+//         console.log(result.text());
+//         res.status(200).json({
+//             response: result.text()
+//         });
+//     } catch (error) {
+//         res.status(500).json({ error: error.message });
+//     }
+// });
 
 
-app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No audio file received' });
-        }
+// app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
+//     try {
+//         if (!req.file) {
+//             return res.status(400).json({ error: 'No audio file received' });
+//         }
 
-        // Configure audio settings (MUST match frontend recording settings)
-        const audioConfig = {
-            content: req.file.buffer.toString('base64'),
-        };
+//         // Configure audio settings (MUST match frontend recording settings)
+//         const audioConfig = {
+//             content: req.file.buffer.toString('base64'),
+//         };
 
-        const config = {
-            encoding: 'WEBM_OPUS',
-            sampleRateHertz: 48000,
-            languageCode: 'en-US', // Single language fallback
-            //   alternativeLanguageCodes: [ // ✅ Plural parameter name
-            //     'en-US',    // English (US)
-            //     'es-ES',    // Spanish (Spain)
-            //     'fr-FR',    // French
-            //     'de-DE',    // German
-            //     'hi-IN',    // Hindi
-            //     'ja-JP',    // Japanese
-            //     'ko-KR',    // Korean
-            //     'zh-CN',    // Chinese (Simplified)
-            //     'ar-SA'     // Arabic
-            //   ],
-            // model: 'latest_long' // Required for long audio + multiple languages
-        };
+//         const config = {
+//             encoding: 'WEBM_OPUS',
+//             sampleRateHertz: 48000,
+//             languageCode: 'en-US', // Single language fallback
+//             //   alternativeLanguageCodes: [ // ✅ Plural parameter name
+//             //     'en-US',    // English (US)
+//             //     'es-ES',    // Spanish (Spain)
+//             //     'fr-FR',    // French
+//             //     'de-DE',    // German
+//             //     'hi-IN',    // Hindi
+//             //     'ja-JP',    // Japanese
+//             //     'ko-KR',    // Korean
+//             //     'zh-CN',    // Chinese (Simplified)
+//             //     'ar-SA'     // Arabic
+//             //   ],
+//             // model: 'latest_long' // Required for long audio + multiple languages
+//         };
 
-        // Use longRunningRecognize for audio > 1 minute
-        const [operation] = await client.longRunningRecognize({
-            audio: audioConfig,
-            config: config,
-        });
+//         // Use longRunningRecognize for audio > 1 minute
+//         const [operation] = await client.longRunningRecognize({
+//             audio: audioConfig,
+//             config: config,
+//         });
 
-        const [response] = await operation.promise();
-        const transcript = response.results
-            .map(result => result.alternatives[0].transcript)
-            .join('\n');
+//         const [response] = await operation.promise();
+//         const transcript = response.results
+//             .map(result => result.alternatives[0].transcript)
+//             .join('\n');
 
-        // Translate to English
-        const projectId = 'gen-lang-client-0617251816';
-        const [translation] = await translationClient.translateText({
-            parent: `projects/${projectId}/locations/global`,
-            contents: [transcript],
-            mimeType: 'text/plain',
-            sourceLanguageCode: 'auto', // Auto-detect source
-            targetLanguageCode: 'en-US'
-        });
+//         // Translate to English
+//         const projectId = 'gen-lang-client-0617251816';
+//         const [translation] = await translationClient.translateText({
+//             parent: `projects/${projectId}/locations/global`,
+//             contents: [transcript],
+//             mimeType: 'text/plain',
+//             sourceLanguageCode: 'auto', // Auto-detect source
+//             targetLanguageCode: 'en-US'
+//         });
 
-        res.json({ transcript: translation.translations[0].translatedText });
+//         res.json({ transcript: translation.translations[0].translatedText });
 
-    } catch (error) {
-        console.error('Speech API Error:', error);
-        res.status(500).json({
-            error: 'Speech recognition failed',
-            details: error.message
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('Speech API Error:', error);
+//         res.status(500).json({
+//             error: 'Speech recognition failed',
+//             details: error.message
+//         });
+//     }
+// });
 
 
 // app.post('/gemini-voice', async (req, res) => {
@@ -743,8 +722,6 @@ app.post('/gemini-voice', upload.single('audio'), async (req, res) => {
 //         });
 //     }
 // });
-
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 async function getOrCreateCustomerByEmail(email) {
     try {
@@ -781,7 +758,7 @@ app.post('/create-stripe-customer', async (req, res) => {
             return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
         }
 
-        if (paymentMethodId == '') { 
+        if (paymentMethodId == '') {
             return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
         }
 
@@ -859,11 +836,15 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
         amount,
         currency,
         customer: customer.id,
-        payment_method: paymentMethodId, 
+        payment_method: paymentMethodId,
         metadata: {
             email,
             subscription,
             duration
+        },
+        automatic_payment_methods: {
+            enabled: true,
+            allow_redirects: 'never', // Disable redirect-based payment methods
         },
         expand: ['charges'],
     })
@@ -872,12 +853,12 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
         return { success: false };
     }
     else {
-         // Get card details
+        // Get card details
         const cardDetailsResponse = await getCardDetails(paymentMethodId);
         return { success: true, data: response, card: cardDetailsResponse };
     }
 
-    
+
 }
 
 // app.post('/make-payment', async (req, res) => {
@@ -896,23 +877,17 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
 //     }
 // });
 
-// async function makePayment(clientSecret, cardDetails, subscription, duration){
-//         const { error: paymentError, paymentIntent } = await stripe.paymentIntents.confirm(clientSecret, {
-//             payment_method: {
-//                 card: cardDetails, // Card details passed from the frontend
-//                 metadata: {
-//                     subscription, // Subscription type
-//                     duration      // Duration of the subscription
-//                 }
-//             }
-//         });
+async function makePayment(paymentIntentId, paymentMethodId) {
+    const { error: paymentError, paymentIntent } = await stripe.paymentIntents.confirm(paymentIntentId, {
+        payment_method: paymentMethodId,
+    });
 
-//         if (paymentError) {
-//             return { success: false , error: paymentError.message };
-//         }
+    if (paymentError) {
+        return { success: false, error: paymentError.message };
+    }
 
-//         return { success: true, paymentIntent };
-// }
+    return { success: true, paymentIntent };
+}
 
 app.post('/create-stripe-subscription', async (req, res) => {
     try {
@@ -1022,8 +997,6 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
         return { status: false, message: 'Failed to calculate refund details', error: error.message };
     }
 }
-
-// app.post('/attach-payment-method', async (req, res) => {
 //     const { email, cardDetails } = req.body;
 
 //     try {
@@ -1247,6 +1220,115 @@ async function emailDraftSend(key, name, subscription, days, tillDate, amount) {
     }
 }
 
+app.get('/auto-sub-renewal', async (req, res) => {
+    try {
+        // Retrieve all keys from the 'xmati-subscriber' bucket
+        const keys = await getFromS3ByPrefix('xmati-subscriber');
+
+        if (!keys || keys.length === 0) {
+            return res.status(404).json({ status: false, message: 'No subscriptions found' });
+        }
+
+        const currentDate = new Date();
+        const normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+
+        for (const key of keys) {
+            try {
+                const data = JSON.parse(key.data);
+
+                // Validate and normalize the 'till' date
+                if (!data.till) {
+                    console.warn(`Skipping key ${key.key}: Missing 'till' value`);
+                    continue;
+                }
+
+                const tillDate = new Date(data.till);
+                if (isNaN(tillDate)) {
+                    console.warn(`Skipping key ${key.key}: Invalid 'till' value`);
+                    continue;
+                }
+
+                const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
+
+                // Skip if subscription is "Trial"
+                if (data.subscription === 'Trial') {
+                    continue;
+                }
+
+                // Compare normalizedTillDate with normalizedCurrentDate
+                if (normalizedTillDate.getTime() === normalizedCurrentDate.getTime()) {
+
+                    // Retrieve user data from 'xmati-users' bucket
+                    const userKey = key.key;
+                    let userData = await getFromS3('xmati-users', userKey);
+                    userData = await streamToString(userData);
+
+                    if (!userData) {
+                        console.error(`User data not found for key ${userKey}`);
+                        continue;
+                    }
+
+                    const parsedUserData = JSON.parse(userData);
+
+                    // Validate customerId and paymentMethodId
+                    const customerId = parsedUserData.stripeCustomerId;
+                    const paymentMethodId = parsedUserData.stripePayementId;
+
+                    if (!customerId || !paymentMethodId) {
+                        console.error(`Missing customerId or paymentMethodId for key ${userKey}`);
+                        continue;
+                    }
+
+                    // Extract numeric value from amount (e.g., "$18" -> 18)
+                    const numericAmount = parseFloat(data.amount.replace(/^\$/, ''));
+                    if (isNaN(numericAmount)) {
+                        console.error(`Invalid amount format for key ${userKey}: ${data.amount}`);
+                        continue;
+                    }
+
+                    // Create a payment intent
+                    const paymentIntentResponse = await createPaymentIntent(
+                        numericAmount * 100, // Convert amount to cents
+                        'usd',
+                        { id: customerId },
+                        paymentMethodId,
+                        userKey.replace('.txt', ''), // Extract email from key
+                        data.subscription,
+                        data.duration
+                    );
+
+                    if (!paymentIntentResponse.success) {
+                        console.error(`Failed to create payment intent for key ${userKey}:`, paymentIntentResponse.error);
+                        continue;
+                    }
+
+                    const clientSecret = paymentIntentResponse.data.id;
+
+                    // Call the makePayment function
+                    const paymentResponse = await makePayment(
+                        clientSecret,
+                        paymentMethodId,
+                    );
+
+                    if (!paymentResponse.success) {
+                        console.error(`Failed to process payment for key ${key.key}:`, paymentResponse.error);
+                        continue;
+                    }
+
+                    console.log(`Payment successful for key ${key.key}:`, paymentResponse.paymentIntent);
+                }
+            } catch (error) {
+                console.error(`Error processing key ${key.key}:`, error.message);
+                continue; // Skip this key and move to the next
+            }
+        }
+
+        return res.status(200).json({ status: true, message: 'Auto-renewal process completed successfully' });
+    } catch (error) {
+        console.error('Error in auto-sub-renewal:', error);
+        return res.status(500).json({ status: false, message: 'Something went wrong', error: error.message });
+    }
+});
 
 function streamToString(stream) {
     return new Promise((resolve, reject) => {
