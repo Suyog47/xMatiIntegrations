@@ -242,7 +242,7 @@ app.post('/user-auth', async (req, res) => {
                 msg = "User registered successfully";
 
                 // Save trial subscription
-                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "15d", 0);
+                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "3d", 0, false);
                 if (!response.status) {
                     status = 400;
                     success = false;
@@ -330,6 +330,7 @@ app.post('/save-subscription', async (req, res) => {
     res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
 });
 
+
 async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
     try {
         const currentDate = new Date();
@@ -347,30 +348,25 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
                 days = 3
             }
 
-            // Add 15 days
+
             newDate = new Date(new Date().setDate(currentDate.getDate() + days));
         } else {
-            // // Add 1 month
-            // if (duration === 'monthly') {
-            //     newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
-            // }
-            // else if (duration === 'half-yearly') {
-            //     newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
-            // }
-            // else if (duration === 'yearly') {
-            //     newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
-            // }
-            // else if (duration === 'custom') {
-            //     newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
-            // }
-            // else {
-            //     return { status: false, msg: 'Invalid duration' };
-            // }
-            newDate = new Date(new Date().setDate(currentDate.getDate() + 0));
+            if (duration === 'monthly') {
+                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
+            }
+            else if (duration === 'half-yearly') {
+                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
+            }
+            else if (duration === 'yearly') {
+                newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
+            }
+            else if (duration === 'custom') {
+                newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
+            }
+            else {
+                return { status: false, msg: 'Invalid duration' };
+            }
         }
-
-        // const istCurrentDate = format(currentDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' });
-        // const istNewDate = format(newDate, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone: 'Asia/Kolkata' })
 
         const data = {
             name,
@@ -378,7 +374,8 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
             createdAt: currentDate,
             till: newDate,
             duration,
-            amount
+            amount,
+            isCancelled
         }
 
 
@@ -832,7 +829,7 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
         ? customerId
         : await getOrCreateCustomerByEmail(email);
 
-    let response = await await stripe.paymentIntents.create({
+    let response = await stripe.paymentIntents.create({
         amount,
         currency,
         customer: customer.id,
@@ -942,11 +939,6 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
         const start = new Date(startDate);
         const expiry = new Date(expiryDate);
 
-        // Ensure the current date is within the subscription period
-        if (currentDate < start || currentDate > expiry) {
-            return { status: false, message: 'Current date is outside the subscription period' };
-        }
-
         // Total number of months in the subscription
         let totalMonths = 0;
         let temp = new Date(start);
@@ -969,9 +961,9 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
             cycleNumber++;
         }
 
-        // Get end of current cycle
-        const currentCycleEnd = new Date(currentCycleStart);
-        currentCycleEnd.setMonth(currentCycleEnd.getMonth() + 1);
+        const tentativeCycleEnd = new Date(currentCycleStart);
+        tentativeCycleEnd.setMonth(tentativeCycleEnd.getMonth() + 1);
+        const currentCycleEnd = tentativeCycleEnd > expiry ? expiry : tentativeCycleEnd;
 
         // Remaining days in the current cycle
         const msInDay = 1000 * 60 * 60 * 24;
@@ -1047,12 +1039,14 @@ app.post('/cancel-subscription', async (req, res) => {
         // Calculate refund details
         const refundDetails = calculateRefundDetails(start, expiry, numericAmount);
         if (!refundDetails.status) {
+            console.log('Refund calculation error:', refundDetails.message);
             return res.status(400).json({ success: false, message: refundDetails.message });
         }
 
 
         let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
         if (!response.status) {
+            console.log('Failed to save subscription data:', response.msg);
             return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
         }
 
@@ -1071,7 +1065,7 @@ app.post('/cancel-subscription', async (req, res) => {
         });
     } catch (err) {
         console.error('Refund error:', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
@@ -1182,14 +1176,6 @@ app.get('/send-expiry-email', async (req, res) => {
                 }
 
                 if ([15, 7, 3, 1].includes(daysRemaining)) {
-                    // expiryDetails.push({
-                    //     name: data.name,
-                    //     key: key.key,
-                    //     subscription: data.subscription,
-                    //     till: normalizedTillDate.toISOString(), // Convert to string for JSON response
-                    //     daysRemaining
-                    // });
-
                     await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount);
                 }
             } catch (error) {
@@ -1251,7 +1237,8 @@ app.get('/auto-sub-renewal', async (req, res) => {
                 const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
 
                 // Skip if subscription is "Trial"
-                if (data.subscription === 'Trial') {
+                if (data.subscription === 'Trial' || data.isCancelled === true) {
+                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is "Trial" or cancelled.`);
                     continue;
                 }
 
@@ -1315,7 +1302,23 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         continue;
                     }
 
-                    console.log(`Payment successful for key ${key.key}:`, paymentResponse.paymentIntent);
+                    // Call saveSubscriptionToS3 after successful payment
+                    const saveSubscriptionResponse = await saveSubscriptionToS3(
+                        userKey.replace('.txt', ''), // Email
+                        data.name,
+                        data.subscription,
+                        data.duration,
+                        0,
+                        data.amount,
+                        false // isCancelled flag
+                    );
+
+                    if (!saveSubscriptionResponse.status) {
+                        console.error(`Failed to save subscription for key ${key.key}:`, saveSubscriptionResponse.msg);
+                        continue;
+                    }
+
+                    console.log(`Payment and subscriotion save successful for key ${key.key}:`);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
@@ -1340,10 +1343,21 @@ function streamToString(stream) {
 }
 
 
-// Schedule a task to run every hour
+//cron job to send expiry email every day at 10 AM UTC
 cron.schedule('0 0 10 * * *', async () => {
     try {
         const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
+        console.log('Cron job executed successfully:');
+    } catch (error) {
+        console.error('Error executing cron job:', error.message);
+    }
+});
+
+
+// cron job to auto-renew subscriptions every day at 10 AM UTC
+cron.schedule('21 17 * * *', async () => {
+    try {
+        await axios.get('http://localhost:8000/auto-sub-renewal');
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
