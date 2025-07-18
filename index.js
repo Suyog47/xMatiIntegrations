@@ -935,20 +935,33 @@ app.post('/create-stripe-subscription', async (req, res) => {
     }
 });
 
+function formatToISODate(date) {
+    const d = new Date(date)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0') // 0-based
+    const day = String(d.getDate()).padStart(2, '0')
+
+    return `${year}-${month}-${day}`
+}
+
+function getMonthDifference(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const years = end.getFullYear() - start.getFullYear();
+    const months = end.getMonth() - start.getMonth();
+    const totalMonths = years * 12 + months;
+
+    return totalMonths;
+}
 
 function calculateRefundDetails(startDate, expiryDate, totalAmount) {
     try {
         const currentDate = new Date();
-        const start = new Date(startDate);
-        const expiry = new Date(expiryDate);
+        const start = new Date(formatToISODate(startDate));
+        const expiry = new Date(formatToISODate(expiryDate));
 
         // Total number of months in the subscription
-        let totalMonths = 0;
-        let temp = new Date(start);
-        while (temp < expiry) {
-            totalMonths++;
-            temp.setMonth(temp.getMonth() + 1);
-        }
+        let totalMonths = getMonthDifference(start, expiry);
 
         // Find the current cycle number (0-based)
         let currentCycleStart = new Date(start);
@@ -1031,6 +1044,7 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
 
 
 // Example usage in the refund API
+
 
 
 app.post('/cancel-subscription', async (req, res) => {
