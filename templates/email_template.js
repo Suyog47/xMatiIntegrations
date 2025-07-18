@@ -76,7 +76,6 @@ function paymentFailedEmail(fullName, planName, amount) {
 
                 <p><strong>🚨 Next Steps:</strong></p>
                 <ul>
-                    <li>Update Payment Method Now</li> Or
                     <li>Retry payment manually: <a href="https://www.app.xmati.ai">Pay Now</a></li>
                 </ul>
 
@@ -89,6 +88,10 @@ function paymentFailedEmail(fullName, planName, amount) {
 }
 
 function renewalReminderEmail(fullName, planName, renewalDate, amount) {
+    const subscriptionMessage = planName === 'Trial'
+        ? `Your trial subscription will end on <strong>${renewalDate}</strong>. To continue enjoying xMati, please subscribe to a paid plan before this date.`
+        : `Your <strong>${planName}</strong> subscription will auto-renew on <strong>${renewalDate}</strong>.`;
+
     return {
         subject: "Friendly Reminder: Your xMati Plan Renews Soon 🔄",
         body: `
@@ -96,7 +99,7 @@ function renewalReminderEmail(fullName, planName, renewalDate, amount) {
             <body style="font-family: Arial, sans-serif; line-height: 1.6;">
                 <p>Hi ${fullName},</p>
 
-                <p>Your <strong>${planName}</strong> subscription will auto-renew on <strong>${renewalDate}</strong>.</p>
+                <p>${subscriptionMessage}</p>
                 <p><strong>📌 Amount:</strong> ${amount}</p>
 
                 <p><strong>Need to make changes?</strong></p>

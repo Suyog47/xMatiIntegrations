@@ -720,6 +720,7 @@ app.post('/forgot-pass', async (req, res) => {
 //     }
 // });
 
+
 async function getOrCreateCustomerByEmail(email) {
     try {
 
@@ -874,6 +875,7 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
 //     }
 // });
 
+
 async function makePayment(paymentIntentId, paymentMethodId) {
     const { error: paymentError, paymentIntent } = await stripe.paymentIntents.confirm(paymentIntentId, {
         payment_method: paymentMethodId,
@@ -885,6 +887,7 @@ async function makePayment(paymentIntentId, paymentMethodId) {
 
     return { success: true, paymentIntent };
 }
+
 
 app.post('/create-stripe-subscription', async (req, res) => {
     try {
@@ -989,6 +992,7 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
         return { status: false, message: 'Failed to calculate refund details', error: error.message };
     }
 }
+
 //     const { email, cardDetails } = req.body;
 
 //     try {
@@ -1238,7 +1242,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                 // Skip if subscription is "Trial"
                 if (data.subscription === 'Trial' || data.isCancelled === true) {
-                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is "Trial" or cancelled.`);
+                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is Trial or Cancelled.`);
                     continue;
                 }
 
@@ -1299,6 +1303,10 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     if (!paymentResponse.success) {
                         console.error(`Failed to process payment for key ${key.key}:`, paymentResponse.error);
+
+                        // Send the failed payment email
+                        const failedPaymentEmailTemplate = paymentFailedEmail(data.name, data.subscription, data.amount);
+                        sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
                         continue;
                     }
 
