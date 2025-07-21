@@ -115,6 +115,26 @@ function renewalReminderEmail(fullName, planName, renewalDate, amount) {
     };
 }
 
+function afterOneWeekExpiryEmail(fullName) {
+    return {
+        subject: "Your xMati Bot Awaits – Ready When You Are 🤖",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>We hope you’ve been well! This is just a quick note to let you know that your xMati account and bots are still here—fully intact and ready to pick up where you left off.</p>
+
+                <p>While we respect your decision to pause, we’d love to have you back whenever you’re ready. Your account and bot information remain saved, so reactivating is seamless.</p>
+
+                <p>Need it live again? Just log in and resume your subscription, no setup needed.</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 function passwordChangeConfirmationEmail(fullName) {
     return {
         subject: "Password Updated – Secure Your xMati Account",
@@ -274,6 +294,7 @@ module.exports = {
     paymentReceiptEmail,
     paymentFailedEmail,
     renewalReminderEmail,
+    afterOneWeekExpiryEmail,
     passwordChangeConfirmationEmail,
     profileUpdateConfirmationEmail,
     paymentMethodUpdateConfirmationEmail,

@@ -19,6 +19,7 @@ const { welcomeSubscription,
     paymentReceiptEmail,
     paymentFailedEmail,
     renewalReminderEmail,
+    afterOneWeekExpiryEmail,
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
     paymentMethodUpdateConfirmationEmail,
@@ -1194,8 +1195,8 @@ app.get('/send-expiry-email', async (req, res) => {
                     continue; // Skip this key
                 }
 
-                if ([15, 7, 5, 3, 1].includes(daysRemaining)) {
-                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount);
+                if ([15, 7, 5, 3, 1, -7].includes(daysRemaining)) {
+                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount, daysRemaining);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
@@ -1214,10 +1215,16 @@ app.get('/send-expiry-email', async (req, res) => {
     }
 });
 
-async function emailDraftSend(key, name, subscription, days, tillDate, amount) {
+async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining) {
     try {
         const email = key.replace('.txt', '');
-        const emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount);
+        let emailTemplate;
+        if (daysRemaining === -7) {
+            emailTemplate = afterOneWeekExpiryEmail(name);
+        }
+        else {
+            emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount);
+        }
         await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
         console.log(`Email sent to ${email} about ${days} day(s) remaining.`);
     } catch (emailError) {
@@ -1255,14 +1262,17 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                 const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
 
-                // Skip if subscription is "Trial"
-                if (data.subscription === 'Trial' || data.isCancelled === true) {
-                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is Trial or Cancelled.`);
+                // Skip if subscription is "Cancelled"
+                if (data.isCancelled === true) {
+                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is Cancelled.`);
                     continue;
                 }
 
-                // Compare normalizedTillDate with normalizedCurrentDate
+                // Compare expiry (till date) with the current date
                 if (normalizedTillDate.getTime() === normalizedCurrentDate.getTime()) {
+                    let subscription = data.subscription;
+                    let duration = data.duration;
+                    let amount = data.amount;
 
                     // Retrieve user data from 'xmati-users' bucket
                     const userKey = key.key;
@@ -1276,6 +1286,13 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     const parsedUserData = JSON.parse(userData);
 
+                    // Check if Trial and assign next subscription details
+                    if (subscription === 'Trial') {
+                        subscription = parsedUserData.nextSubs.plan
+                        duration = parsedUserData.nextSubs.duration;
+                        amount = `$${parsedUserData.nextSubs.price}`;
+                    }
+  
                     // Validate customerId and paymentMethodId
                     const customerId = parsedUserData.stripeCustomerId;
                     const paymentMethodId = parsedUserData.stripePayementId;
@@ -1286,9 +1303,9 @@ app.get('/auto-sub-renewal', async (req, res) => {
                     }
 
                     // Extract numeric value from amount (e.g., "$18" -> 18)
-                    const numericAmount = parseFloat(data.amount.replace(/^\$/, ''));
+                    const numericAmount = parseFloat(amount.replace(/^\$/, ''));
                     if (isNaN(numericAmount)) {
-                        console.error(`Invalid amount format for key ${userKey}: ${data.amount}`);
+                        console.error(`Invalid amount format for key ${userKey}: ${amount}`);
                         continue;
                     }
 
@@ -1299,8 +1316,8 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         { id: customerId },
                         paymentMethodId,
                         userKey.replace('.txt', ''), // Extract email from key
-                        data.subscription,
-                        data.duration
+                        subscription,
+                        duration
                     );
 
                     if (!paymentIntentResponse.success) {
@@ -1320,7 +1337,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         console.error(`Failed to process payment for key ${key.key}:`, paymentResponse.error);
 
                         // Send the failed payment email
-                        const failedPaymentEmailTemplate = paymentFailedEmail(data.name, data.subscription, data.amount);
+                        const failedPaymentEmailTemplate = paymentFailedEmail(parsedUserData.fullName, subscription, amount);
                         sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
                         continue;
                     }
@@ -1328,11 +1345,11 @@ app.get('/auto-sub-renewal', async (req, res) => {
                     // Call saveSubscriptionToS3 after successful payment
                     const saveSubscriptionResponse = await saveSubscriptionToS3(
                         userKey.replace('.txt', ''), // Email
-                        data.name,
-                        data.subscription,
-                        data.duration,
+                        parsedUserData.fullName,
+                        subscription,
+                        duration,
                         0,
-                        data.amount,
+                        amount,
                         false // isCancelled flag
                     );
 
@@ -1341,7 +1358,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         continue;
                     }
 
-                    console.log(`Payment and subscriotion save successful for key ${key.key}:`);
+                    console.log(`Payment and subscriotion save successful for key ${key.key}`);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
