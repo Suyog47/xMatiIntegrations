@@ -242,7 +242,7 @@ app.post('/user-auth', async (req, res) => {
                 msg = "User registered successfully";
 
                 // Save trial subscription
-                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "3d", 0, false);
+                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "5d", 0, 0, false);
                 if (!response.status) {
                     status = 400;
                     success = false;
@@ -337,17 +337,16 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
         let newDate;
 
         if (subscription === 'Trial') {
-            let days = 1;
+            let days = 5;
 
             if (duration === '15d') {
                 // Add 15 days
                 days = 15
             }
-            else if (duration === '3d') {
-                // Add 3 days
-                days = 3
+            else if (duration === '5d') {
+                // Add 5 days
+                days = 5
             }
-
 
             newDate = new Date(new Date().setDate(currentDate.getDate() + days));
         } else {
@@ -888,7 +887,6 @@ async function makePayment(paymentIntentId, paymentMethodId) {
     return { success: true, paymentIntent };
 }
 
-
 app.post('/create-stripe-subscription', async (req, res) => {
     try {
         const { customerId, subscription, duration } = req.body;
@@ -954,7 +952,7 @@ function getMonthDifference(startDate, endDate) {
     return totalMonths;
 }
 
-function calculateRefundDetails(startDate, expiryDate, totalAmount) {
+function calculateRefundDetails(startDate, expiryDate, totalAmount, subs) {
     try {
         const currentDate = new Date();
         const start = new Date(formatToISODate(startDate));
@@ -986,13 +984,16 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount) {
         const daysRemainingInCycle = Math.ceil((currentCycleEnd - currentDate) / msInDay);
 
         // Full months remaining after the current cycle
-        let remainingMonths = totalMonths - (cycleNumber + 1); // +1 to exclude current cycle
-
-        // Monthly amount
-        const monthlyAmount = totalAmount / totalMonths;
+        const usedMonth = cycleNumber + 1
+        let remainingMonths = totalMonths - usedMonth; // +1 to exclude current cycle
 
         // Refund only for full months remaining
-        const refundAmount = remainingMonths * monthlyAmount;
+        const monthlyAmount = (subs === 'Professional') ? 100 : 18 //totalAmount / totalMonths
+        const usedAmount = usedMonth * monthlyAmount
+        const remainingAmount = totalAmount - usedAmount
+        const refundAmount = Math.max(0, remainingAmount)
+
+
 
         return {
             status: true,
@@ -1055,7 +1056,7 @@ app.post('/cancel-subscription', async (req, res) => {
         const numericAmount = parseFloat(amount.replace(/^\$/, ''));
 
         // Calculate refund details
-        const refundDetails = calculateRefundDetails(start, expiry, numericAmount);
+        const refundDetails = calculateRefundDetails(start, expiry, numericAmount, subscription);
         if (!refundDetails.status) {
             console.log('Refund calculation error:', refundDetails.message);
             return res.status(400).json({ success: false, message: refundDetails.message });
@@ -1193,7 +1194,7 @@ app.get('/send-expiry-email', async (req, res) => {
                     continue; // Skip this key
                 }
 
-                if ([15, 7, 3, 1].includes(daysRemaining)) {
+                if ([15, 7, 5, 3, 1].includes(daysRemaining)) {
                     await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount);
                 }
             } catch (error) {
@@ -1379,7 +1380,7 @@ cron.schedule('0 0 10 * * *', async () => {
 // cron job to auto-renew subscriptions every day at 10 AM UTC
 cron.schedule('21 17 * * *', async () => {
     try {
-        await axios.get('http://localhost:8000/auto-sub-renewal');
+        await axios.get('https://www.app.xmati.ai/apis/auto-sub-renewal');
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
