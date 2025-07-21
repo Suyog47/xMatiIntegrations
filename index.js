@@ -1048,6 +1048,44 @@ function calculateRefundDetails(startDate, expiryDate, totalAmount, subs) {
 // Example usage in the refund API
 
 
+app.post('/trial-cancellation', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Get data from "xmati-users" bucket
+        let userData = await getFromS3("xmati-users", `${email}.txt`);
+        userData = await streamToString(userData);
+        userData = JSON.parse(userData);
+
+        // Remove "nextSubs" key from user data
+        delete userData.nextSubs;
+
+        // Save updated user data back to "xmati-users" bucket
+        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
+        if (!userSaveResponse) {
+            return res.status(400).json({ success: false, message: 'Failed to update user data' });
+        }
+
+        // Get data from "xmati-subscribers" bucket
+        let subscriberData = await getFromS3("xmati-subscriber", `${email}.txt`);
+        subscriberData = await streamToString(subscriberData);
+        subscriberData = JSON.parse(subscriberData);
+
+        // Set "isCancelled" key to true
+        subscriberData.isCancelled = true;
+
+        // Save updated subscriber data back to "xmati-subscribers" bucket
+        const subscriberSaveResponse = await saveToS3("xmati-subscriber", `${email}.txt`, JSON.stringify(subscriberData));
+        if (!subscriberSaveResponse) {
+            return res.status(400).json({ success: false, message: 'Failed to update subscriber data' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Trial subscription cancelled successfully' });
+    } catch (err) {
+        console.error('Trial cancellation error:', err.message);
+        res.status(500).json({ success: false, message: 'Something went wrong', error: err.message });
+    }
+});
 
 app.post('/cancel-subscription', async (req, res) => {
     try {
@@ -1084,7 +1122,7 @@ app.post('/cancel-subscription', async (req, res) => {
             refundDetails
         });
     } catch (err) {
-        console.error('Refund error:', err.message);
+        console.error('Cancellation error:', err.message);
         res.status(500).json({ success: false, message: err.message });
     }
 });
@@ -1288,11 +1326,17 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     // Check if Trial and assign next subscription details
                     if (subscription === 'Trial') {
+
+                        if (!parsedUserData.nextSubs || !parsedUserData.nextSubs.plan || !parsedUserData.nextSubs.duration || !parsedUserData.nextSubs.price) {
+                            console.error(`Trials Next subscription details missing for key ${userKey}`);
+                            continue;
+                        }
+
                         subscription = parsedUserData.nextSubs.plan
                         duration = parsedUserData.nextSubs.duration;
                         amount = `$${parsedUserData.nextSubs.price}`;
                     }
-  
+
                     // Validate customerId and paymentMethodId
                     const customerId = parsedUserData.stripeCustomerId;
                     const paymentMethodId = parsedUserData.stripePayementId;
