@@ -243,7 +243,7 @@ app.post('/user-auth', async (req, res) => {
                 msg = "User registered successfully";
 
                 // Save trial subscription
-                let response = await saveSubscriptionToS3(data.email, data.name, "Trial", "5d", 0, 0, false);
+                let response = await saveSubscriptionToS3(data.email, data.fullName, "Trial", "5d", 0, 0, false);
                 if (!response.status) {
                     status = 400;
                     success = false;
@@ -1209,6 +1209,8 @@ app.get('/send-expiry-email', async (req, res) => {
         for (const key of keys) {
             try {
                 const data = JSON.parse(key.data);
+                let amount = data.amount;
+                let subscription = data.subscription;
 
                 // Validate and normalize the 'till' date
                 if (!data.till) {
@@ -1234,7 +1236,21 @@ app.get('/send-expiry-email', async (req, res) => {
                 }
 
                 if ([15, 7, 5, 3, 1, -7].includes(daysRemaining)) {
-                    await emailDraftSend(key.key, data.name, data.subscription, daysRemaining, normalizedTillDate, data.amount, daysRemaining);
+                    const userKey = key.key;
+                    let userData = await getFromS3('xmati-users', userKey);
+                    userData = await streamToString(userData);
+
+                    if (!userData) {
+                        console.error(`User data not found for key ${userKey}`);
+                        continue;
+                    }
+
+                    if(data.subscription === 'Trial' && data.isCancelled === false) {
+                        amount = userData.nextSubs.price;
+                        subscription = userData.nextSubs.plan;
+                    }
+                   
+                    await emailDraftSend(key.key, data.name, subscription, daysRemaining, normalizedTillDate, amount, daysRemaining, data.isCancelled);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
@@ -1253,7 +1269,7 @@ app.get('/send-expiry-email', async (req, res) => {
     }
 });
 
-async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining) {
+async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining, isCancelled) {
     try {
         const email = key.replace('.txt', '');
         let emailTemplate;
@@ -1261,7 +1277,7 @@ async function emailDraftSend(key, name, subscription, days, tillDate, amount, d
             emailTemplate = afterOneWeekExpiryEmail(name);
         }
         else {
-            emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount);
+            emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount, isCancelled);
         }
         await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
         console.log(`Email sent to ${email} about ${days} day(s) remaining.`);
@@ -1428,9 +1444,9 @@ function streamToString(stream) {
 
 
 //cron job to send expiry email every day at 10 AM UTC
-cron.schedule('0 0 10 * * *', async () => {
+cron.schedule('07 12 * * *', async () => {
     try {
-        const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
+        const response = await axios.get('http://localhost:8000/send-expiry-email');
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);

@@ -87,20 +87,20 @@ function paymentFailedEmail(fullName, planName, amount) {
     };
 }
 
-function renewalReminderEmail(fullName, planName, renewalDate, amount) {
-    const subscriptionMessage = planName === 'Trial'
-        ? `Your trial subscription will end on <strong>${renewalDate}</strong>. To continue enjoying xMati, please subscribe to a paid plan before this date.`
+function renewalReminderEmail(fullName, planName, renewalDate, amount, isCancelled) {
+    const subscriptionMessage = isCancelled === true
+        ? `Your ${planName} plan will end on <strong>${renewalDate}</strong>. To continue enjoying xMati services, please subscribe to a paid plan before expiry.`
         : `Your <strong>${planName}</strong> subscription will auto-renew on <strong>${renewalDate}</strong>.`;
 
     return {
-        subject: "Friendly Reminder: Your xMati Plan Renews Soon 🔄",
+        subject: `Friendly Reminder: Your xMati Plan ${isCancelled === true ? 'Expires' : 'Renews'} Soon 🔄`,
         body: `
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                <p>Hi ${fullName},</p>
+                <p>Hi ${fullName || 'User'},</p>
 
                 <p>${subscriptionMessage}</p>
-                <p><strong>📌 Amount:</strong> ${amount}</p>
+                ${isCancelled === true ? `<p></p>` : `<p><strong>📌 Amount:</strong> ${amount}</p>`}
 
                 <p><strong>Need to make changes?</strong></p>
                 <ul>
