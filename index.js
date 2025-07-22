@@ -404,6 +404,41 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
     }
 }
 
+
+app.post('/trial-sub-upgrade', async (req, res) => {
+    try {
+        const { email, plan, duration, price } = req.body;
+
+        // Check if the user is on a Starter plan
+        if(plan === 'Starter') {
+            return res.status(200).json({ success: true, message: 'No upgrade required' });
+        }
+        // Get data from "xmati-users" bucket
+        let userData = await getFromS3("xmati-users", `${email}.txt`);
+        userData = await streamToString(userData);
+        userData = JSON.parse(userData);
+
+        // Set nextSubs Value
+        userData.nextSubs = {
+            plan,
+            duration,
+            price,
+            suggested: true
+        };
+
+        // Save updated users data back to "xmati-users" bucket
+        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
+        if (!userSaveResponse) {
+            return res.status(400).json({ success: false, message: 'Failed to update user data' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
+    }
+});
+
 app.post('/get-subscription', async (req, res) => {
     try {
         const { key } = req.body;
@@ -422,6 +457,7 @@ app.post('/get-subscription', async (req, res) => {
     }
 });
 
+
 app.post('/set-maintenance', async (req, res) => {
     try {
         const { status } = req.body;
@@ -436,6 +472,7 @@ app.post('/set-maintenance', async (req, res) => {
     }
 });
 
+
 app.get('/get-maintenance', async (req, res) => {
     let data = await getMaintenance();
 
@@ -446,6 +483,7 @@ app.get('/get-maintenance', async (req, res) => {
         return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
     }
 });
+
 
 async function getMaintenance() {
     try {
@@ -465,6 +503,7 @@ async function getMaintenance() {
         return { status: false };
     }
 }
+
 
 app.post('/failed-payment', async (req, res) => {
     try {
@@ -1086,6 +1125,7 @@ app.post('/trial-cancellation', async (req, res) => {
         res.status(500).json({ success: false, message: 'Something went wrong', error: err.message });
     }
 });
+
 
 app.post('/cancel-subscription', async (req, res) => {
     try {
