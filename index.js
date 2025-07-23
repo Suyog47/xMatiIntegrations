@@ -409,23 +409,26 @@ app.post('/trial-sub-upgrade', async (req, res) => {
     try {
         const { email, plan, duration, price } = req.body;
 
-        // Check if the user is on a Starter plan
-        if(plan === 'Starter') {
-            return res.status(200).json({ success: true, message: 'No upgrade required' });
-        }
         // Get data from "xmati-users" bucket
         let userData = await getFromS3("xmati-users", `${email}.txt`);
         userData = await streamToString(userData);
         userData = JSON.parse(userData);
 
-        // Set nextSubs Value
-        userData.nextSubs = {
-            plan,
-            duration,
-            price,
-            suggested: true
-        };
-
+        // Check if the user is on a Starter plan and set nextSubs Value
+        if (plan === 'Starter') {
+            userData.nextSubs = {
+                ...userData.nextSubs,
+                suggested: true
+            };
+        }
+        else {
+            userData.nextSubs = {
+                plan,
+                duration,
+                price,
+                suggested: true
+            };
+        }
         // Save updated users data back to "xmati-users" bucket
         const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
         if (!userSaveResponse) {
@@ -1285,11 +1288,11 @@ app.get('/send-expiry-email', async (req, res) => {
                         continue;
                     }
 
-                    if(data.subscription === 'Trial' && data.isCancelled === false) {
+                    if (data.subscription === 'Trial' && data.isCancelled === false) {
                         amount = userData.nextSubs.price;
                         subscription = userData.nextSubs.plan;
                     }
-                   
+
                     await emailDraftSend(key.key, data.name, subscription, daysRemaining, normalizedTillDate, amount, daysRemaining, data.isCancelled);
                 }
             } catch (error) {
