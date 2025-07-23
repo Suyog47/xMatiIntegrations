@@ -976,79 +976,78 @@ app.post('/create-stripe-subscription', async (req, res) => {
     }
 });
 
-function formatToISODate(date) {
-    const d = new Date(date)
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0') // 0-based
-    const day = String(d.getDate()).padStart(2, '0')
+// function formatToISODate(date) {
+//     const d = new Date(date)
+//     const year = d.getFullYear()
+//     const month = String(d.getMonth() + 1).padStart(2, '0') // 0-based
+//     const day = String(d.getDate()).padStart(2, '0')
 
-    return `${year}-${month}-${day}`
-}
+//     return `${year}-${month}-${day}`
+// }
 
-function getMonthDifference(startDate, endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const years = end.getFullYear() - start.getFullYear();
-    const months = end.getMonth() - start.getMonth();
-    const totalMonths = years * 12 + months;
+// function getMonthDifference(startDate, endDate) {
+//     const start = new Date(startDate);
+//     const end = new Date(endDate);
+//     const years = end.getFullYear() - start.getFullYear();
+//     const months = end.getMonth() - start.getMonth();
+//     const totalMonths = years * 12 + months;
 
-    return totalMonths;
-}
+//     return totalMonths;
+// }
 
-function calculateRefundDetails(startDate, expiryDate, totalAmount, subs) {
-    try {
-        const currentDate = new Date();
-        const start = new Date(formatToISODate(startDate));
-        const expiry = new Date(formatToISODate(expiryDate));
+// function calculateRefundDetails(startDate, expiryDate, totalAmount, subs) {
+//     try {
+//         const currentDate = new Date();
+//         const start = new Date(formatToISODate(startDate));
+//         const expiry = new Date(formatToISODate(expiryDate));
 
-        // Total number of months in the subscription
-        let totalMonths = getMonthDifference(start, expiry);
+//         // Total number of months in the subscription
+//         let totalMonths = getMonthDifference(start, expiry);
 
-        // Find the current cycle number (0-based)
-        let currentCycleStart = new Date(start);
-        let cycleNumber = 0;
-        while (currentCycleStart <= currentDate) {
-            const nextCycleStart = new Date(currentCycleStart);
-            nextCycleStart.setMonth(nextCycleStart.getMonth() + 1);
+//         // Find the current cycle number (0-based)
+//         let currentCycleStart = new Date(start);
+//         let cycleNumber = 0;
+//         while (currentCycleStart <= currentDate) {
+//             const nextCycleStart = new Date(currentCycleStart);
+//             nextCycleStart.setMonth(nextCycleStart.getMonth() + 1);
 
-            if (currentDate < nextCycleStart) {
-                break;
-            }
-            currentCycleStart = nextCycleStart;
-            cycleNumber++;
-        }
+//             if (currentDate < nextCycleStart) {
+//                 break;
+//             }
+//             currentCycleStart = nextCycleStart;
+//             cycleNumber++;
+//         }
 
-        const tentativeCycleEnd = new Date(currentCycleStart);
-        tentativeCycleEnd.setMonth(tentativeCycleEnd.getMonth() + 1);
-        const currentCycleEnd = tentativeCycleEnd > expiry ? expiry : tentativeCycleEnd;
+//         const tentativeCycleEnd = new Date(currentCycleStart);
+//         tentativeCycleEnd.setMonth(tentativeCycleEnd.getMonth() + 1);
+//         const currentCycleEnd = tentativeCycleEnd > expiry ? expiry : tentativeCycleEnd;
 
-        // Remaining days in the current cycle
-        const msInDay = 1000 * 60 * 60 * 24;
-        const daysRemainingInCycle = Math.ceil((currentCycleEnd - currentDate) / msInDay);
+//         // Remaining days in the current cycle
+//         const msInDay = 1000 * 60 * 60 * 24;
+//         const daysRemainingInCycle = Math.ceil((currentCycleEnd - currentDate) / msInDay);
 
-        // Full months remaining after the current cycle
-        const usedMonth = cycleNumber + 1
-        let remainingMonths = totalMonths - usedMonth; // +1 to exclude current cycle
+//         // Full months remaining after the current cycle
+//         const usedMonth = cycleNumber + 1
+//         let remainingMonths = totalMonths - usedMonth; // +1 to exclude current cycle
 
-        // Refund only for full months remaining
-        const monthlyAmount = (subs === 'Professional') ? 100 : 18 //totalAmount / totalMonths
-        const usedAmount = usedMonth * monthlyAmount
-        const remainingAmount = totalAmount - usedAmount
-        const refundAmount = Math.max(0, remainingAmount)
+//         // Refund only for full months remaining
+//         const monthlyAmount = (subs === 'Professional') ? 100 : 18 //totalAmount / totalMonths
+//         const usedAmount = usedMonth * monthlyAmount
+//         const remainingAmount = totalAmount - usedAmount
+//         const refundAmount = Math.max(0, remainingAmount)
 
 
-
-        return {
-            status: true,
-            daysRemainingInCycle,
-            remainingMonths,
-            refundAmount: refundAmount.toFixed(2),
-        };
-    } catch (error) {
-        console.error('Error calculating refund details:', error.message);
-        return { status: false, message: 'Failed to calculate refund details', error: error.message };
-    }
-}
+//         return {
+//             status: true,
+//             daysRemainingInCycle,
+//             remainingMonths,
+//             refundAmount: refundAmount.toFixed(2),
+//         };
+//     } catch (error) {
+//         console.error('Error calculating refund details:', error.message);
+//         return { status: false, message: 'Failed to calculate refund details', error: error.message };
+//     }
+// }
 
 //     const { email, cardDetails } = req.body;
 
@@ -1132,18 +1131,12 @@ app.post('/trial-cancellation', async (req, res) => {
 
 app.post('/cancel-subscription', async (req, res) => {
     try {
-        const { chargeId, reason, email, fullName, subscription, amount, start, expiry } = req.body;
-
-        // Convert amount to an integer
-        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
-
-        // Calculate refund details
-        const refundDetails = calculateRefundDetails(start, expiry, numericAmount, subscription);
+        const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
+       
         if (!refundDetails.status) {
             console.log('Refund calculation error:', refundDetails.message);
             return res.status(400).json({ success: false, message: refundDetails.message });
         }
-
 
         let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
         if (!response.status) {
