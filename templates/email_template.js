@@ -87,6 +87,37 @@ function paymentFailedEmail(fullName, planName, amount) {
     };
 }
 
+function subscriptionCancellationEmail(fullName, subscription, cancellationDate, endBillingCycleDate, retentionDays, refund) {
+    return {
+        subject: `We’re Sorry to See You Go – Your xMati ${subscription} Subscription Has Been Cancelled`,
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+                <p>We’ve processed your request, and your xMati subscription has been cancelled as of ${cancellationDate}.</p>
+                <p>Here’s what happens next:</p>
+                <ul>
+                    <li>✔ Your auto-subscription payment cycle has been disabled.</li>
+                    <li>✔ Your Access continues until ${endBillingCycleDate}.</li>
+                    <li>✔ Your bot & data will remain intact for ${retentionDays} days—reactivate anytime for uninterrupted access of the services.</li>
+                    ${refund > 0.00 
+                        ? `<li>✔ Your refund amount of $${refund} is getting processed and you should receive it shortly.</li>`
+                        : subscription !== 'Trial' ? '<li>✔ No Refund will be given at this period.</li>' : ''}
+                    <li>✔ If at any point of time you decide to go with a plan, please do visit https://www.app.xmati.ai and login into you account and purchase one. Your bots (if created) will automatically be available to you.</li>
+                </ul>
+                
+                <p>If you have a moment, we’d appreciate hearing why you decided to cancel. Your feedback helps us improve:</p>
+                <p>Please revert back to this email with your feedback.</p>
+                <p>Thank You for Being Part of xMati</p>
+                <p>We’re grateful for the chance to serve you. If you ever want to return, your bots will be ready and waiting.</p>
+                <p>Wishing you all the best,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 function renewalReminderEmail(fullName, planName, renewalDate, amount, isCancelled) {
     const subscriptionMessage = isCancelled === true
         ? `Your ${planName} plan will end on <strong>${renewalDate}</strong>. To continue enjoying xMati services, please subscribe to a paid plan before expiry.`
@@ -301,5 +332,6 @@ module.exports = {
     botCreationSuccessEmail,
     botDeletionConfirmationEmail,
     botNameUpdateEmail,
-    forgotPasswordOtpEmail
+    forgotPasswordOtpEmail,
+    subscriptionCancellationEmail
 };

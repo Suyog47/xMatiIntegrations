@@ -3,18 +3,18 @@ const cron = require('node-cron');
 const { Parser } = require('json2csv');
 const fs = require('fs');
 const path = require('path');
-const { createBotReplica } = require('./src/amazon-lex/bot-functions/bot-replication');
-const { startConvo, getDatafromS3 } = require('./src/amazon-lex/bot-functions/bot-conversation');
-const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
-const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-creation');
-const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
+// const { createBotReplica } = require('./src/amazon-lex/bot-functions/bot-replication');
+// const { startConvo, getDatafromS3 } = require('./src/amazon-lex/bot-functions/bot-conversation');
+// const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
+// const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-creation');
+// const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
 const { setWebhook } = require('./src/telegram/set-webhook');
 const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
-const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
+// const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
 // const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
-const { format } = require('date-fns-tz');
+// const { format } = require('date-fns-tz');
 const { welcomeSubscription,
     paymentReceiptEmail,
     paymentFailedEmail,
@@ -26,6 +26,7 @@ const { welcomeSubscription,
     botCreationSuccessEmail,
     botDeletionConfirmationEmail,
     forgotPasswordOtpEmail,
+    subscriptionCancellationEmail,
     botNameUpdateEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
@@ -257,7 +258,7 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
-        if (from === "updatePass" || from === "updateProfile" || from === "updatePayment") {
+        if (from === "updatePass" || from === "updateProfile") {
             result = await updateUserPassOrProfile(data.email, data);
             if (result === "success") {
                 status = 200;
@@ -303,6 +304,60 @@ app.post('/user-auth', async (req, res) => {
     }
 });
 
+app.post('/update-card-info', async (req, res) => {
+    const { email, customerId, paymentMethodId, data } = req.body;
+
+    try {
+        if (!customerId) {
+            return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
+        }
+
+        if (paymentMethodId == '') {
+            return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
+        }
+
+        // Attach the payment method to the customer
+        await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+
+        // Set the payment method as the default for the customer
+        await stripe.customers.update(customerId, {
+            invoice_settings: { default_payment_method: paymentMethodId },
+        });
+
+        let result = await updateUserPassOrProfile(email, data);
+
+        if (result === "error") {
+            return res.status(400).json({ success: false, msg: "Failed to update user's card details" });
+        }
+
+        return res.status(200).json({
+            success: true,
+            msg: 'Stripe customer created and payment method attached successfully'
+        });
+    } catch (error) {
+        console.error('Error creating Stripe customer:', error.message);
+        return res.status(500).json({ success: false, msg: error.message });
+    }
+});
+
+app.post('/get-card-details', async (req, res) => {
+    try {
+        const { paymentMethodId } = req.body;
+        if (!paymentMethodId) {
+            return res.status(400).json({ success: false, message: 'Payment Method ID is required' });
+        }
+
+        const cardDetailsResponse = await getCardDetails(paymentMethodId);
+        if (!cardDetailsResponse.success) {
+            return res.status(400).json(cardDetailsResponse);
+        }
+
+        return res.status(200).json({ success: true, cardDetails: cardDetailsResponse.cardDetails });
+    } catch (error) {
+        console.error('Error retrieving card details:', error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 app.post('/send-email', async (req, res) => {
     try {
@@ -390,12 +445,12 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
 
             // Send welcome email
             sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
-        }
 
-        // Send payment email
+             // Send payment email
         if (subscription !== 'Trial') {
             const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
             sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
+        }
         }
 
         return { status: true };
@@ -441,6 +496,7 @@ app.post('/trial-sub-upgrade', async (req, res) => {
         return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
     }
 });
+
 
 app.post('/get-subscription', async (req, res) => {
     try {
@@ -568,6 +624,7 @@ app.post('/get-bots', async (req, res) => {
     }
 });
 
+
 app.get('/get-all-bots', async (req, res) => {
     try {
 
@@ -581,6 +638,7 @@ app.get('/get-all-bots', async (req, res) => {
         return res.status(500).json({ status: false, error: 'Something went wrong while getting the bot' });
     }
 });
+
 
 app.post('/delete-bot', async (req, res) => {
     try {
@@ -818,7 +876,7 @@ app.post('/create-stripe-customer', async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating Stripe customer:', error.message);
-        return res.status(500).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, msg: error.message });
     }
 });
 
@@ -856,6 +914,7 @@ async function getCardDetails(paymentMethodId) {
             last4: paymentMethod.card.last4,
             exp_month: paymentMethod.card.exp_month,
             exp_year: paymentMethod.card.exp_year,
+            funding: paymentMethod.card.funding,  // This can be 'credit', 'debit', etc.
         };
 
         return { success: true, cardDetails };
@@ -897,8 +956,6 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
         const cardDetailsResponse = await getCardDetails(paymentMethodId);
         return { success: true, data: response, card: cardDetailsResponse };
     }
-
-
 }
 
 // app.post('/make-payment', async (req, res) => {
@@ -1115,7 +1172,7 @@ app.post('/trial-cancellation', async (req, res) => {
         // Set "isCancelled" key to true
         subscriberData.isCancelled = true;
 
-        // Save updated subscriber data back to "xmati-subscribers" bucket
+        // Save updated subscriber data back to "xmati-subscriber" bucket
         const subscriberSaveResponse = await saveToS3("xmati-subscriber", `${email}.txt`, JSON.stringify(subscriberData));
         if (!subscriberSaveResponse) {
             return res.status(400).json({ success: false, message: 'Failed to update subscriber data' });
@@ -1132,7 +1189,7 @@ app.post('/trial-cancellation', async (req, res) => {
 app.post('/cancel-subscription', async (req, res) => {
     try {
         const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
-       
+
         if (!refundDetails.status) {
             console.log('Refund calculation error:', refundDetails.message);
             return res.status(400).json({ success: false, message: refundDetails.message });
@@ -1152,6 +1209,16 @@ app.post('/cancel-subscription', async (req, res) => {
                 reason: reason || 'requested_by_customer',
             });
         }
+
+        const currentDate = new Date();
+        const newDate = new Date(new Date().setDate(currentDate.getDate() + refundDetails.daysRemainingInCycle));
+
+        let normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+        let normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+
+        // Send a cancellation email
+        const cancelEmail = subscriptionCancellationEmail(fullName, subscription, normalizedCurrentDate, normalizedNewDate, refundDetails.daysRemainingInCycle, refundDetails.refundAmount);
+        sendEmail(email, null, null, cancelEmail.subject, cancelEmail.body);
 
         return res.status(200).json({
             success: true,
