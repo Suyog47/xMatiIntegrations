@@ -446,11 +446,11 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
             // Send welcome email
             sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
 
-             // Send payment email
-        if (subscription !== 'Trial') {
-            const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
-            sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
-        }
+            // Send payment email
+            if (subscription !== 'Trial') {
+                const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
+                sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
+            }
         }
 
         return { status: true };
@@ -845,12 +845,18 @@ async function getOrCreateCustomerByEmail(email) {
     }
 }
 
-app.post('/create-stripe-customer', async (req, res) => {
-    const { email, paymentMethodId } = req.body;
+app.post('/attach-payment-method', async (req, res) => {
+    const { email, paymentMethodId, customerId } = req.body;
 
     try {
         // Get or create a Stripe customer
-        const customer = await getOrCreateCustomerByEmail(email);
+        let customer = null;
+        if (customerId === '') {
+            customer = await getOrCreateCustomerByEmail(email);
+        } else {
+            customer = customerId;
+        }
+
 
         if (!customer) {
             return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
@@ -875,8 +881,32 @@ app.post('/create-stripe-customer', async (req, res) => {
             paymentMethodId: paymentMethodId,
         });
     } catch (error) {
-        console.error('Error creating Stripe customer:', error.message);
+        console.error('Error with stripe:', error.message);
         return res.status(500).json({ success: false, msg: error.message });
+    }
+});
+
+
+app.post('/create-setup-intent', async (req, res) => {
+    const { email, customerId } = req.body;
+
+    try {
+        let customer = null;
+        if (customerId === '') {
+            customer = await getOrCreateCustomerByEmail(email);
+        } else {
+            customer = customerId;
+        }
+
+        const setupIntent = await stripe.setupIntents.create({
+            customer: customer.id,
+            usage: 'off_session',
+        });
+
+        res.json({ clientSecret: setupIntent.client_secret, customerId: customer.id });
+    } catch (err) {
+        console.error('Error creating SetupIntent:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
