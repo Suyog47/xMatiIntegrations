@@ -594,10 +594,7 @@ app.post('/save-bot', async (req, res) => {
         }
         
         // A call to save the bots inside backed bot bucket as well
-        let success = await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
-        if (!success) {
-            return res.status(400).json({ status: false, error: 'Failed to save bot in backup' });
-        }
+        await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
 
         let email = key.split('_')[0]
         let botName = (key.split('_')[1]).split('-')[1];
