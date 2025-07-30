@@ -460,7 +460,37 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
 }
 
 
-app.post('/trial-sub-upgrade', async (req, res) => {
+app.post('/trial-nextsub-upgrade', async (req, res) => {
+    try {
+        const { email, plan, duration, price } = req.body;
+
+        // Get data from "xmati-users" bucket
+        let userData = await getFromS3("xmati-users", `${email}.txt`);
+        userData = await streamToString(userData);
+        userData = JSON.parse(userData);
+
+            userData.nextSubs = {
+                ...userData.nextSubs,
+                plan,
+                duration,
+                price,
+            };
+
+        // Save updated users data back to "xmati-users" bucket
+        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
+        if (!userSaveResponse) {
+            return res.status(400).json({ success: false, message: 'Failed to update user data' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
+    }
+});
+
+
+app.post('/pro-suggestion-update', async (req, res) => {
     try {
         const { email, plan, duration, price } = req.body;
 
