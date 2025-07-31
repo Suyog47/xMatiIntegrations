@@ -10,7 +10,7 @@ function welcomeSubscription(fullName, planName, billingCycle, nextChargeDate, o
 
                 <p><strong>✨ Key Features:</strong></p>
                 <ul>
-                    <li>${planName === 'Trial' ? '3' : (planName === 'Starter') ? '3' : '5'} bots creation</li>
+                    <li>${planName === 'Trial' ? '5' : (planName === 'Starter') ? '3' : '5'} bots creation</li>
                     <li>AI-powered chatbots</li>
                     <li>Real-time analytics</li>
                     <li>Readymade Bot templates</li>
@@ -320,6 +320,51 @@ function forgotPasswordOtpEmail(email, otpCode) {
     };
 }
 
+function trialNextsubUpgradeEmail(fullName, plan, duration, amount) {
+    return {
+        subject: `Congratulations on Upgrading to the ${plan} Plan!`,
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+                <p>Thank you for upgrading your plan! You have successfully upgraded to the <strong>${plan}</strong> plan which will be <strong>activated</strong> only after your trial ends.</p>
+                <p>Your upgrade details:</p>
+                <ul>
+                    <li><strong>Plan:</strong> ${plan}</li>
+                    <li><strong>Duration:</strong> ${duration}</li>
+                    <li><strong>Amount:</strong> ${amount}</li>
+                </ul>
+                <p>You can change your plan anytime before your trial ends to continue enjoying our services.</p>
+                <p>If you have any questions or need assistance, feel free to reply to this email.</p>
+                <p>Best regards,<br/>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
+function proSuggestionUpdateEmail(success, fullName) {
+    return {
+       subject: (success) ? "Subscription upgraded to Professional Plan" : "Subscription kept to Starter Plan",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Thanks for trying out xMati! We hope your trial has been an exciting introduction to our services.</p>
+                <p>You have choosen to be part of us by ${success ? "upgrading to the Professional Plan" : "staying on the Starter Plan"}.</p>
+
+                <p>If you want to change your plan, <a href="https://www.app.xmati.ai/upgrade" style="color: #0078D7;">click here</a>.</p>
+
+                <p>If you have any questions or need assistance, simply reply to this email.</p>
+                <p>Best regards,</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 module.exports = {
     welcomeSubscription,
     paymentReceiptEmail,
@@ -333,5 +378,7 @@ module.exports = {
     botDeletionConfirmationEmail,
     botNameUpdateEmail,
     forgotPasswordOtpEmail,
-    subscriptionCancellationEmail
+    subscriptionCancellationEmail,
+    trialNextsubUpgradeEmail,
+    proSuggestionUpdateEmail
 };

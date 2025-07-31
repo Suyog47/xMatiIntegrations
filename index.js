@@ -27,6 +27,8 @@ const { welcomeSubscription,
     botDeletionConfirmationEmail,
     forgotPasswordOtpEmail,
     subscriptionCancellationEmail,
+    trialNextsubUpgradeEmail,
+    proSuggestionUpdateEmail,
     botNameUpdateEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
@@ -482,6 +484,10 @@ app.post('/trial-nextsub-upgrade', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Failed to update user data' });
         }
 
+        // Prepare email template
+        const emailTemplate = trialNextsubUpgradeEmail(userData.fullName, plan, duration, price);
+        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
+
         return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
     } catch (error) {
         console.log(error);
@@ -519,6 +525,10 @@ app.post('/pro-suggestion-update', async (req, res) => {
         if (!userSaveResponse) {
             return res.status(400).json({ success: false, message: 'Failed to update user data' });
         }
+
+        // Prepare email template
+        const emailTemplate = proSuggestionUpdateEmail((plan === 'Starter') ? false : true, userData.fullName);
+        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
 
         return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
     } catch (error) {
