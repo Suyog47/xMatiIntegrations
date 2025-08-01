@@ -1619,7 +1619,7 @@ function streamToString(stream) {
 }
 
 
-//cron job to send expiry email every day at 11:55 PM UTC
+//cron job to send expiry email every day at 10:00 PM
 cron.schedule('25 18 * * *', async () => {
     try {
         const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
@@ -1630,15 +1630,15 @@ cron.schedule('25 18 * * *', async () => {
 });
 
 
-// cron job to auto-renew subscriptions every day at 10:00 PM UTC
-cron.schedule('30 16 * * *', async () => {
+// cron job to auto-renew subscriptions every day at 11:55 PM
+cron.schedule('55 23 * * *', async () => {
     try {
         await axios.get('https://www.app.xmati.ai/apis/auto-sub-renewal');
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
     }
-});
+}, { timezone: 'America/Los_Angeles' });
 
 // Specify the port and start the server
 const PORT = 8000;
