@@ -471,12 +471,12 @@ app.post('/trial-nextsub-upgrade', async (req, res) => {
         userData = await streamToString(userData);
         userData = JSON.parse(userData);
 
-            userData.nextSubs = {
-                ...userData.nextSubs,
-                plan,
-                duration,
-                price,
-            };
+        userData.nextSubs = {
+            ...userData.nextSubs,
+            plan,
+            duration,
+            price,
+        };
 
         // Save updated users data back to "xmati-users" bucket
         const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
@@ -632,7 +632,7 @@ app.post('/save-bot', async (req, res) => {
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
         }
-        
+
         // A call to save the bots inside backed bot bucket as well
         await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
 
@@ -1049,15 +1049,38 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
 
 
 async function makePayment(paymentIntentId, paymentMethodId) {
-    const { error: paymentError, paymentIntent } = await stripe.paymentIntents.confirm(paymentIntentId, {
-        payment_method: paymentMethodId,
-    });
+    try {
+        const response = await stripe.paymentIntents.confirm(paymentIntentId, {
+            payment_method: paymentMethodId,
+        });
 
-    if (paymentError) {
-        return { success: false, error: paymentError.message };
+        if (response.error) {
+            return { success: false, error: response.error.message };
+        }
+
+        // Check if the payment was successful
+        if (response.status === 'succeeded') {
+            return {
+                success: true,
+                paymentIntent: {
+                    id: response.id,
+                    amount: response.amount / 100, 
+                    currency: response.currency,
+                    customer: response.customer,
+                    paymentMethod: response.payment_method,
+                    status: response.status, 
+                    latestCharge: response.latest_charge, 
+                },
+            };
+        } else {
+            return {
+                success: false,
+                error: `Payment failed with status: ${response.status}`,
+            };
+        }
+    } catch (error) {
+        return { success: false, error: error.message };
     }
-
-    return { success: true, paymentIntent };
 }
 
 app.post('/create-stripe-subscription', async (req, res) => {
@@ -1461,6 +1484,40 @@ async function emailDraftSend(key, name, subscription, days, tillDate, amount, d
         console.error(`Failed to send email to ${email}:`, emailError.message);
     }
 }
+
+// app.get('/dummy-pay', async (req, res) => {
+//     // Create a payment intent
+//     const paymentIntentResponse = await createPaymentIntent(
+//         1800, // Convert amount to cents
+//         'usd',
+//         { id: 'cus_SiiBZocXzw4jLO' },
+//         'pm_1RofuuPBSMPLjWxm2hynibr9',
+//         'suyogamin@gmail.com',
+//         '',
+//         ''
+//     );
+
+//     if (!paymentIntentResponse.success) {
+//         console.error(`Failed to create payment intent for key suyogamin@gmail.com:`, paymentIntentResponse.error);
+//         return;
+//     }
+
+//     const clientSecret = paymentIntentResponse.data.id;
+
+//     // Call the makePayment function
+//     const paymentResponse = await makePayment(
+//         clientSecret,
+//        'pm_1RofuuPBSMPLjWxm2hynibr9',
+//     );
+
+//     if (!paymentResponse.success) {
+//         console.error(`Failed to process payment for key suyogamin@gmail.com:`, paymentResponse.error);
+//         return res.status(400).send('Payment failed: ' + paymentResponse);
+//     }
+
+//     return res.send(paymentResponse);
+
+// })
 
 app.get('/auto-sub-renewal', async (req, res) => {
     try {
