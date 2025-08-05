@@ -603,22 +603,49 @@ async function getMaintenance() {
     }
 }
 
-
-app.post('/failed-payment', async (req, res) => {
+app.get('/get-all-users-subscriptions', async (req, res) => {
     try {
-        const { email, name, subscription, amount } = req.body;
+        // Fetch all user keys from the 'xmati-users' bucket
+        const userKeys = await getFromS3ByPrefix('xmati-users', '');
 
-        // Prepare the email content
-        const failedPaymentEmailTemplate = paymentFailedEmail(name, subscription, amount);
+        if (!userKeys || userKeys.length === 0) {
+            return res.status(404).json({ success: false, message: 'No users found' });
+        }
 
-        // Send the email
-        await sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
+        const usersWithSubscriptions = [];
 
-        return res.status(200).json({ status: true, msg: 'Failed payment email sent successfully' });
-    }
-    catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, msg: 'Something went wrong while processing the failed payment email' });
+        for (const userKey of userKeys) {
+            try {
+                // Fetch user data
+                const userDataStream = await getFromS3('xmati-users', userKey.key);
+                const userDataString = await streamToString(userDataStream);
+                const userData = JSON.parse(userDataString);
+
+                // Fetch subscription data
+                const subscriptionDataStream = await getFromS3('xmati-subscriber', userKey.key);
+                const subscriptionDataString = await streamToString(subscriptionDataStream);
+                const subscriptionData = JSON.parse(subscriptionDataString);
+
+                // Combine user and subscription data
+                usersWithSubscriptions.push({
+                    email: userKey.key.replace('.txt', ''), // Extract email from key
+                    userData,
+                    subscriptionData
+                });
+            } catch (error) {
+                console.error(`Error processing user key ${userKey.key}:`, error.message);
+                continue; // Skip this user and move to the next
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Users and subscriptions retrieved successfully',
+            data: usersWithSubscriptions,
+        });
+    } catch (error) {
+        console.error('Error fetching users and subscriptions:', error.message);
+        return res.status(500).json({ success: false, message: 'Something went wrong', error: error.message });
     }
 });
 
@@ -1083,6 +1110,7 @@ async function makePayment(paymentIntentId, paymentMethodId) {
     }
 }
 
+
 app.post('/create-stripe-subscription', async (req, res) => {
     try {
         const { customerId, subscription, duration } = req.body;
@@ -1128,6 +1156,26 @@ app.post('/create-stripe-subscription', async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 });
+
+
+app.post('/failed-payment', async (req, res) => {
+    try {
+        const { email, name, subscription, amount } = req.body;
+
+        // Prepare the email content
+        const failedPaymentEmailTemplate = paymentFailedEmail(name, subscription, amount);
+
+        // Send the email
+        await sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
+
+        return res.status(200).json({ status: true, msg: 'Failed payment email sent successfully' });
+    }
+    catch (error) {
+        console.log(error);
+        return res.status(500).json({ status: false, msg: 'Something went wrong while processing the failed payment email' });
+    }
+});
+
 
 // function formatToISODate(date) {
 //     const d = new Date(date)
