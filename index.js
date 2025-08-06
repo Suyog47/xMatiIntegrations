@@ -626,11 +626,34 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
                 const subscriptionDataString = await streamToString(subscriptionDataStream);
                 const subscriptionData = JSON.parse(subscriptionDataString);
 
+                // Fetch bots for the user
+                const botKeys = await getFromS3ByPrefix('xmatibots', userKey.key.replace('.txt', ''));
+                const botsData = [];
+
+                for (const botKey of botKeys) {
+                    try {
+                        const id = botKey.key.split('_')[1]
+
+                        botsData.push({
+                            id: id,
+                            name: id.split('-')[1],
+                        });
+                    } catch (botError) {
+                        console.error(`Error processing bot key ${botKey.key}:`, botError.message);
+                        continue; // Skip this bot and move to the next
+                    }
+                }
+
+                // Remove unwanted keys from userData
+                const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userData;
+
+
                 // Combine user and subscription data
                 usersWithSubscriptions.push({
                     email: userKey.key.replace('.txt', ''), // Extract email from key
-                    userData,
-                    subscriptionData
+                    userData: filteredUserData,
+                    subscriptionData,
+                    botsData
                 });
             } catch (error) {
                 console.error(`Error processing user key ${userKey.key}:`, error.message);
@@ -1091,12 +1114,12 @@ async function makePayment(paymentIntentId, paymentMethodId) {
                 success: true,
                 paymentIntent: {
                     id: response.id,
-                    amount: response.amount / 100, 
+                    amount: response.amount / 100,
                     currency: response.currency,
                     customer: response.customer,
                     paymentMethod: response.payment_method,
-                    status: response.status, 
-                    latestCharge: response.latest_charge, 
+                    status: response.status,
+                    latestCharge: response.latest_charge,
                 },
             };
         } else {
