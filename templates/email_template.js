@@ -365,6 +365,27 @@ function proSuggestionUpdateEmail(success, fullName) {
     };
 }
 
+function registrationEmailVerificationOtpEmail(fullName, otpCode) {
+    return {
+        subject: "Verify Your Email – OTP Inside 🔑",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>Welcome to xMati! To complete your registration, please verify your email address using the OTP below:</p>
+
+                <p><strong>Your OTP:</strong> <span style="font-size: 18px; font-weight: bold;">${otpCode}</span></p>
+
+                <p>If you did not sign up for xMati, please ignore this email.</p>
+
+                <p>Thank you,<br/>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 module.exports = {
     welcomeSubscription,
     paymentReceiptEmail,
@@ -380,5 +401,6 @@ module.exports = {
     forgotPasswordOtpEmail,
     subscriptionCancellationEmail,
     trialNextsubUpgradeEmail,
-    proSuggestionUpdateEmail
+    proSuggestionUpdateEmail,
+    registrationEmailVerificationOtpEmail
 };

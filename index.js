@@ -29,6 +29,7 @@ const { welcomeSubscription,
     subscriptionCancellationEmail,
     trialNextsubUpgradeEmail,
     proSuggestionUpdateEmail,
+    registrationEmailVerificationOtpEmail,
     botNameUpdateEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
@@ -758,7 +759,7 @@ app.post('/delete-bot', async (req, res) => {
 
 app.post('/check-user', async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, otp } = req.body;
 
         let result = await keyExists("xmati-users", `${email}.txt`);
         if (result) {
@@ -778,6 +779,15 @@ app.post('/check-user', async (req, res) => {
         console.log(error);
         return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
     }
+});
+
+
+app.post('/send-email-otp', async (req, res) => {
+    const { fullName, email, otp } = req.body;
+
+    const emailTemplate = registrationEmailVerificationOtpEmail(fullName, otp);
+    await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
+    res.status(200).json({ status: true, message: 'OTP email sent successfully' });
 });
 
 
