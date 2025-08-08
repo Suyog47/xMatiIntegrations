@@ -759,16 +759,18 @@ app.post('/delete-bot', async (req, res) => {
 
 app.post('/check-user', async (req, res) => {
     try {
-        const { email, otp } = req.body;
+        const { email, from } = req.body;
 
         let result = await keyExists("xmati-users", `${email}.txt`);
         if (result) {
             // Generate a random 4-digit OTP
             const otp = Math.floor(1000 + Math.random() * 9000);
 
-            // Send OTP email notification
-            const forgotEmail = forgotPasswordOtpEmail(email, otp);
-            sendEmail(email, null, null, forgotEmail.subject, forgotEmail.body);
+            if (from === 'forgot-pass') {
+                // Send OTP email notification
+                const forgotEmail = forgotPasswordOtpEmail(email, otp);
+                sendEmail(email, null, null, forgotEmail.subject, forgotEmail.body);
+            }
 
             return res.status(200).json({ status: true, message: 'User exists', otp });
         } else {
