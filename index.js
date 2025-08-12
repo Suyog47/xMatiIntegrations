@@ -30,7 +30,7 @@ const { welcomeSubscription,
     trialNextsubUpgradeEmail,
     proSuggestionUpdateEmail,
     registrationEmailVerificationOtpEmail,
-    botNameUpdateEmail } = require('./templates/email_template');
+    botUpdateConfirmationEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
@@ -298,6 +298,15 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
+        if(from === "updateBot"){
+            // Send email notification for bot update
+            status = 200;
+            success = true;
+            msg = "Bot updated successfully";
+            s3Data = {};
+            const botUpdateEmailTemplate = botUpdateConfirmationEmail(data.fullName, data.botName, data.botDescription);
+            sendEmail(data.email, null, null, botUpdateEmailTemplate.subject, botUpdateEmailTemplate.body);
+        }
 
         return res.status(status).json({ success, msg, s3Data });
     }

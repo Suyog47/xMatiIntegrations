@@ -204,6 +204,26 @@ function profileUpdateConfirmationEmail(fullName) {
     };
 }
 
+function botUpdateConfirmationEmail(fullName, botName, botDescription) {
+    return {
+        subject: "Your Bot Has Been Successfully Updated",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <p>Hi ${fullName},</p>
+
+                <p>We’ve successfully updated your bot name to: <strong><u>${botName}</u></strong> and its description to: <em><u>${botDescription}</u></em>, as per your request.</p>
+
+                <p>If you have any further changes or need assistance, feel free to reach out to us.</p>
+
+                <p>Thank you for using xMati!</p>
+                <p>The xMati Team</p>
+            </body>
+        </html>
+        `
+    };
+}
+
 function paymentMethodUpdateConfirmationEmail(fullName) {
     return {
         subject: "Your Payment Method Is Securely Updated",
@@ -402,5 +422,6 @@ module.exports = {
     subscriptionCancellationEmail,
     trialNextsubUpgradeEmail,
     proSuggestionUpdateEmail,
-    registrationEmailVerificationOtpEmail
+    registrationEmailVerificationOtpEmail,
+    botUpdateConfirmationEmail
 };
