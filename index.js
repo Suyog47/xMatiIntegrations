@@ -298,7 +298,7 @@ app.post('/user-auth', async (req, res) => {
             }
         }
 
-        if(from === "updateBot"){
+        if (from === "updateBot") {
             // Send email notification for bot update
             status = 200;
             success = true;
@@ -472,10 +472,11 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
 }
 
 
-app.post('/trial-nextsub-upgrade', async (req, res) => {
+app.post('/nextsub-upgrade', async (req, res) => {
     try {
         const { email, plan, duration, price } = req.body;
 
+        console.log(email, plan, duration, price);
         // Get data from "xmati-users" bucket
         let userData = await getFromS3("xmati-users", `${email}.txt`);
         userData = await streamToString(userData);
@@ -1373,6 +1374,48 @@ app.post('/trial-cancellation', async (req, res) => {
     }
 });
 
+
+app.post('/refund-amount', async (req, res) => {
+    try {
+        const { chargeId, reason, amount } = req.body;
+
+        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
+        // refund the amount
+        if (numericAmount > 0.00) {
+            const refund = await stripe.refunds.create({
+                charge: chargeId,
+                amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
+                reason: reason || 'requested_by_customer',
+            });
+        }
+
+         return res.status(200).json({
+            success: true,
+        });
+    } catch (e) {
+        console.error('Refund error:', e.message);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
+app.post('/downgrade-subscription', async (req, res) => {
+    try {
+        const { email, fullName, currentSub, daysRemaining, amount } = req.body;
+
+        console.log(email, fullName, currentSub, daysRemaining, amount);
+        let response = await saveSubscriptionToS3(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
+        if (!response.status) {
+            console.log('Failed to save subscription data:', response.msg);
+            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
+        }
+
+        // Create a new subscription with the next sub
+    } catch (err) {
+        console.error('Downgrading issue:', err.message);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 app.post('/cancel-subscription', async (req, res) => {
     try {
