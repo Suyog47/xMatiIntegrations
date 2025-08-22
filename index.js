@@ -474,9 +474,8 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
 
 app.post('/nextsub-upgrade', async (req, res) => {
     try {
-        const { email, plan, duration, price } = req.body;
-
-        console.log(email, plan, duration, price);
+        const { email, plan, duration, price, isDowngrade } = req.body;
+        
         // Get data from "xmati-users" bucket
         let userData = await getFromS3("xmati-users", `${email}.txt`);
         userData = await streamToString(userData);
@@ -487,6 +486,7 @@ app.post('/nextsub-upgrade', async (req, res) => {
             plan,
             duration,
             price,
+            isDowngrade
         };
 
         // Save updated users data back to "xmati-users" bucket
@@ -506,6 +506,40 @@ app.post('/nextsub-upgrade', async (req, res) => {
     }
 });
 
+
+app.post('/remove-nextsub', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Get data from "xmati-users" bucket
+        let userData = await getFromS3("xmati-users", `${email}.txt`);
+        userData = await streamToString(userData);
+        userData = JSON.parse(userData);
+
+        // Clear nextSubs if it exists
+        await clearNextSubs(email, userData);
+
+        return res.status(200).json({ status: true, message: 'Next subscription removed successfully' });
+    } catch (err) {
+        console.error('Error in remove-nextsub:', err);
+        return res.status(500).json({ status: false, message: 'Something went wrong while removing next subscription' });
+    }
+});
+
+async function clearNextSubs(email, userData) {
+    try {
+        // delete "nextSubs" key from user data
+        delete userData.nextSubs;
+
+        // Save updated user data back to "xmati-users" bucket
+        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
+        if (!userSaveResponse) {
+            throw new Error('Failed to save user data');
+        }
+    } catch (error) {
+        console.error(`Error clearing nextSubs for ${email}:`, error);
+    }
+}
 
 app.post('/pro-suggestion-update', async (req, res) => {
     try {
@@ -1345,13 +1379,7 @@ app.post('/trial-cancellation', async (req, res) => {
         userData = JSON.parse(userData);
 
         // Remove "nextSubs" key from user data
-        delete userData.nextSubs;
-
-        // Save updated user data back to "xmati-users" bucket
-        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
-        if (!userSaveResponse) {
-            return res.status(400).json({ success: false, message: 'Failed to update user data' });
-        }
+        await clearNextSubs(email, userData);
 
         // Get data from "xmati-subscribers" bucket
         let subscriberData = await getFromS3("xmati-subscriber", `${email}.txt`);
@@ -1389,7 +1417,7 @@ app.post('/refund-amount', async (req, res) => {
             });
         }
 
-         return res.status(200).json({
+        return res.status(200).json({
             success: true,
         });
     } catch (e) {
@@ -1403,7 +1431,6 @@ app.post('/downgrade-subscription', async (req, res) => {
     try {
         const { email, fullName, currentSub, daysRemaining, amount } = req.body;
 
-        console.log(email, fullName, currentSub, daysRemaining, amount);
         let response = await saveSubscriptionToS3(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
         if (!response.status) {
             console.log('Failed to save subscription data:', response.msg);
@@ -1417,6 +1444,7 @@ app.post('/downgrade-subscription', async (req, res) => {
     }
 });
 
+
 app.post('/cancel-subscription', async (req, res) => {
     try {
         const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
@@ -1424,12 +1452,6 @@ app.post('/cancel-subscription', async (req, res) => {
         if (!refundDetails.status) {
             console.log('Refund calculation error:', refundDetails.message);
             return res.status(400).json({ success: false, message: refundDetails.message });
-        }
-
-        let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
-        if (!response.status) {
-            console.log('Failed to save subscription data:', response.msg);
-            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
         }
 
         // refund the amount
@@ -1441,11 +1463,26 @@ app.post('/cancel-subscription', async (req, res) => {
             });
         }
 
+        let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
+        if (!response.status) {
+            console.log('Failed to save subscription data:', response.msg);
+            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
+        }
+
         const currentDate = new Date();
         const newDate = new Date(new Date().setDate(currentDate.getDate() + refundDetails.daysRemainingInCycle));
 
         let normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
         let normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+
+
+        // Get data from "xmati-users" bucket
+        let userData = await getFromS3("xmati-users", `${email}.txt`);
+        userData = await streamToString(userData);
+        userData = JSON.parse(userData);
+
+        // Clear nextSub details (if exists)
+        await clearNextSubs(email, userData);
 
         // Send a cancellation email
         const cancelEmail = subscriptionCancellationEmail(fullName, subscription, normalizedCurrentDate, normalizedNewDate, refundDetails.daysRemainingInCycle, refundDetails.refundAmount);
@@ -1766,7 +1803,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                         // Send the failed payment email
                         const failedPaymentEmailTemplate = paymentFailedEmail(parsedUserData.fullName, subscription, amount);
-                        sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
+                        sendEmail(parsedUserData.email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
                         continue;
                     }
 
@@ -1786,11 +1823,15 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         continue;
                     }
 
-                    console.log(`Payment and subscriotion save successful for key ${key.key}`);
+                    console.log(`Payment and subscription save successful for key ${key.key}`);
                 }
             } catch (error) {
                 console.error(`Error processing key ${key.key}:`, error.message);
                 continue; // Skip this key and move to the next
+            }
+            finally {
+                // Clear nextSubs if it exists
+                await clearNextSubs(userKey.replace('.txt', ''), parsedUserData);
             }
         }
 
