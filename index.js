@@ -1745,17 +1745,11 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     const parsedUserData = JSON.parse(userData);
 
-                    // Check if Trial and assign next subscription details
-                    if (subscription === 'Trial') {
-
-                        if (!parsedUserData.nextSubs || !parsedUserData.nextSubs.plan || !parsedUserData.nextSubs.duration || !parsedUserData.nextSubs.price) {
-                            console.error(`Trials Next subscription details missing for key ${userKey}`);
-                            continue;
-                        }
-
+                    // Check if next subscription details exist
+                    if (parsedUserData.nextSubs) {
                         subscription = parsedUserData.nextSubs.plan
                         duration = parsedUserData.nextSubs.duration;
-                        amount = `$${parsedUserData.nextSubs.price}`;
+                        amount = `${parsedUserData.nextSubs.price}`;
                     }
 
                     // Validate customerId and paymentMethodId
