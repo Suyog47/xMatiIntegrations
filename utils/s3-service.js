@@ -7,6 +7,8 @@ require('dotenv').config();
 const awsAccessKeyId = process.env.AWS_ACCESS_KEY;
 const awsSecretAccessKey = process.env.AWS_SECRET_KEY;
 
+const dbEnv = process.env.DB_ENV;
+
 // Initialize the S3 client
 const s3 = new S3Client({
     region: 'us-east-1',
@@ -22,6 +24,7 @@ const s3 = new S3Client({
 
 async function saveToS3(bucketName, key, content) {
     try {
+        bucketName = (dbEnv == 'prod') ? bucketName : `${bucketName}-${dbEnv}`; // Append environment suffix to bucket name
         const parallelUpload = new Upload({
             client: s3,
             params: {
@@ -52,6 +55,7 @@ async function saveToS3(bucketName, key, content) {
 
 async function getFromS3(bucketName, key) {
     try {
+        bucketName = (dbEnv == 'prod') ? bucketName : `${bucketName}-${dbEnv}`;
         const command = new GetObjectCommand({
             Bucket: bucketName,
             Key: key,
@@ -67,6 +71,7 @@ async function getFromS3(bucketName, key) {
 
 async function getFromS3ByPrefix(bucketName, prefix = '') {
     try {
+        bucketName = (dbEnv == 'prod') ? bucketName : `${bucketName}-${dbEnv}`;
         const listCommand = new ListObjectsV2Command({
             Bucket: bucketName,
             Prefix: prefix,
@@ -105,6 +110,7 @@ async function getFromS3ByPrefix(bucketName, prefix = '') {
 
 async function deleteFromS3(bucketName, key) {
     try {
+        bucketName = (dbEnv == 'prod') ? bucketName : `${bucketName}-${dbEnv}`;
         const command = new DeleteObjectCommand({
             Bucket: bucketName,
             Key: key,
@@ -122,6 +128,7 @@ async function deleteFromS3(bucketName, key) {
 
 async function keyExists(bucketName, key) {
     try {
+        bucketName = (dbEnv == 'prod') ? bucketName : `${bucketName}-${dbEnv}`;
         await s3.send(new HeadObjectCommand({
             Bucket: bucketName,
             Key: key

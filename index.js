@@ -54,11 +54,11 @@ app.use((req, res, next) => {
     next();
 });
 
-const upload = multer({
-    limits: {
-        fileSize: 1024 * 1024 * 1024 // 1GB
-    }
-});
+// const upload = multer({
+//     limits: {
+//         fileSize: 1024 * 1024 * 1024 // 1GB
+//     }
+// });
 
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
@@ -67,11 +67,11 @@ app.use(express.urlencoded({ limit: '1gb', extended: true }));
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 
-const client = new SpeechClient({
-    keyFilename: 'gemini-service-account.json'
-    //projectId: 'gen-lang-client-0617251816' // Your GCP project ID
-});
-const translationClient = new TranslationServiceClient();
+// const client = new SpeechClient({
+//     keyFilename: 'gemini-service-account.json'
+//     //projectId: 'gen-lang-client-0617251816' // Your GCP project ID
+// });
+// const translationClient = new TranslationServiceClient();
 
 // sample get
 app.get('/', (req, res) => {
@@ -728,8 +728,11 @@ app.post('/save-bot', async (req, res) => {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
         }
 
-        // A call to save the bots inside backed bot bucket as well
-        await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
+        // Check if the environment is production before saving to "xmatibots-prod" bucket
+        const dbEnv = process.env.DB_ENV;
+        if (dbEnv == 'prod'){
+            await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
+        }
 
         let email = key.split('_')[0]
         let botName = (key.split('_')[1]).split('-')[1];
