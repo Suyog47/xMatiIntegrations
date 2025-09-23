@@ -1,7 +1,8 @@
+/* eslint-disable no-undef */
 "use strict";
 const { NodeHttpHandler } = require("@smithy/node-http-handler");
 const { Upload } = require('@aws-sdk/lib-storage');
-const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 require('dotenv').config();
 
 const awsAccessKeyId = process.env.AWS_ACCESS_KEY;
@@ -147,6 +148,7 @@ function streamToString(stream) {
     return new Promise((resolve, reject) => {
         const chunks = [];
         stream.on("data", (chunk) => chunks.push(chunk));
+        // eslint-disable-next-line no-undef
         stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
         stream.on("error", reject);
     });

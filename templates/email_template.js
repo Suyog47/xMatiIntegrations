@@ -340,21 +340,21 @@ function forgotPasswordOtpEmail(email, otpCode) {
     };
 }
 
-function trialNextsubUpgradeEmail(fullName, plan, duration, amount) {
+function trialNextsubUpgradeEmail(fullName, plan, duration, amount, isDowngrade) {
     return {
-        subject: `Congratulations on Upgrading to the ${plan} Plan!`,
+        subject: `Congratulations on ${isDowngrade ? "Downgrading" : "Upgrading"} to the ${plan} Plan!`,
         body: `
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6;">
                 <p>Hi ${fullName},</p>
-                <p>Thank you for upgrading your plan! You have successfully upgraded to the <strong>${plan}</strong> plan which will be <strong>activated</strong> only after your trial ends.</p>
+                <p>Thank you for ${isDowngrade ? "downgrading" : "upgrading"} your plan! You have successfully ${isDowngrade ? "downgraded" : "upgraded"} to the <strong>${plan}</strong> plan which will be <strong>activated</strong> only after your current plan expiry day.</p>
                 <p>Your upgrade details:</p>
                 <ul>
                     <li><strong>Plan:</strong> ${plan}</li>
                     <li><strong>Duration:</strong> ${duration}</li>
                     <li><strong>Amount:</strong> ${amount}</li>
                 </ul>
-                <p>You can change your plan anytime before your trial ends to continue enjoying our services.</p>
+                <p>You can change your plan anytime before your current one ends to continue enjoying our services.</p>
                 <p>If you have any questions or need assistance, feel free to reply to this email.</p>
                 <p>Best regards,<br/>The xMati Team</p>
             </body>

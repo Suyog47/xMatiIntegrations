@@ -1,4 +1,5 @@
-const s3Service = require("../../utils/s3-service");
+const s3Service = require("../../../utils/s3-service");
+const { Buffer } = require("buffer");
 
 
 async function login(email, password) {
@@ -84,4 +85,4 @@ function streamToString(stream) {
     });
 }
 
-module.exports = { login, register, updateUserPassOrProfile };
+module.exports = { login, register, updateUserPassOrProfile, setUser };

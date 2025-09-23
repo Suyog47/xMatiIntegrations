@@ -1,4 +1,5 @@
 const express = require('express');
+const { Buffer } = require('buffer');
 const cron = require('node-cron');
 const { Parser } = require('json2csv');
 const fs = require('fs');
@@ -8,15 +9,21 @@ const path = require('path');
 // const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
 // const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-creation');
 // const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
-const { setWebhook } = require('./src/telegram/set-webhook');
-const { login, register, updateUserPassOrProfile } = require('./src/user-auth/auth');
+// const { setWebhook } = require('./src/3rd-party-services/telegram/set-webhook');
+const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 // const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
 // const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
+const { setUser } = require('./src/authentication/user-auth/auth');
+const { updateCard } = require('./src/update-card');
+const { proSuggestionUpgrade } = require('./src/subscription-services/pro-suggestion-upgrade'); 
+const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade'); 
+const { clearNextSubs } = require('./src/nextsub-clear');
+const { saveSubscriptionToS3 } = require('./src/save-subscription');
 // const { format } = require('date-fns-tz');
-const { welcomeSubscription,
-    paymentReceiptEmail,
+
+const {
     paymentFailedEmail,
     renewalReminderEmail,
     afterOneWeekExpiryEmail,
@@ -27,16 +34,14 @@ const { welcomeSubscription,
     botDeletionConfirmationEmail,
     forgotPasswordOtpEmail,
     subscriptionCancellationEmail,
-    trialNextsubUpgradeEmail,
-    proSuggestionUpdateEmail,
     registrationEmailVerificationOtpEmail,
     botUpdateConfirmationEmail } = require('./templates/email_template');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
-const multer = require('multer');
-const { SpeechClient } = require('@google-cloud/speech');
-const { TranslationServiceClient } = require('@google-cloud/translate');
+// const multer = require('multer');
+// const { SpeechClient } = require('@google-cloud/speech');
+// const { TranslationServiceClient } = require('@google-cloud/translate');
 // const Queue = require('bull');
 const http = require('http');
 
@@ -64,6 +69,8 @@ app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
 
 // Initialize Stripe
+require('dotenv').config();
+// eslint-disable-next-line no-undef
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 
@@ -187,20 +194,20 @@ app.get('/', (req, res) => {
 
 
 // telegram webhook endpoint
-app.post('/telegram/setwebhook', async (req, res) => {
-    try {
-        const { botToken, botId } = req.body;
-        var result = await setWebhook(botToken, botId);
+// app.post('/telegram/setwebhook', async (req, res) => {
+//     try {
+//         const { botToken, botId } = req.body;
+//         var result = await setWebhook(botToken, botId);
 
-        if (result) {
-            return res.status(200).json({ message: 'Telegram Integrated Successfully' });
-        }
-        return res.status(400).json({ message: 'Something went wrong' });
-    }
-    catch (err) {
-        return res.status(400).json({ message: 'Something went wrong' });
-    }
-});
+//         if (result) {
+//             return res.status(200).json({ message: 'Telegram Integrated Successfully' });
+//         }
+//         return res.status(400).json({ message: 'Something went wrong' });
+//     }
+//     catch (err) {
+//         return res.status(400).json({ message: 'Something went wrong' });
+//     }
+// });
 
 
 // Endpoint for user authentication through S3
@@ -320,37 +327,25 @@ app.post('/update-card-info', async (req, res) => {
     const { email, customerId, paymentMethodId, data } = req.body;
 
     try {
-        if (!customerId) {
-            return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
+        let result = await updateCard(email, customerId, paymentMethodId, data);
+
+        if(result.success === true){
+            return res.status(200).json({
+                success: true,
+                msg: 'Stripe customer created and payment method attached successfully'
+            });
         }
 
-        if (paymentMethodId == '') {
-            return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
-        }
-
-        // Attach the payment method to the customer
-        await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
-
-        // Set the payment method as the default for the customer
-        await stripe.customers.update(customerId, {
-            invoice_settings: { default_payment_method: paymentMethodId },
-        });
-
-        let result = await updateUserPassOrProfile(email, data);
-
-        if (result === "error") {
-            return res.status(400).json({ success: false, msg: "Failed to update user's card details" });
-        }
-
-        return res.status(200).json({
-            success: true,
-            msg: 'Stripe customer created and payment method attached successfully'
+        return res.status(400).json({
+            success: false,
+            msg: result.msg || 'Failed to update user card details'
         });
     } catch (error) {
         console.error('Error creating Stripe customer:', error.message);
         return res.status(500).json({ success: false, msg: error.message });
     }
 });
+
 
 app.post('/get-card-details', async (req, res) => {
     try {
@@ -382,7 +377,7 @@ app.post('/send-email', async (req, res) => {
         // Email sent successfully
         return res.status(200).json({ status: true, message: 'Email sent successfully!' });
     } catch (error) {
-        return res.status(500).json({ status: false, error: 'Failed to send email' });
+        return res.status(500).json({ status: false, error: error || 'Failed to send email' });
     }
 });
 
@@ -399,107 +394,17 @@ app.post('/save-subscription', async (req, res) => {
 });
 
 
-async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
-    try {
-        const currentDate = new Date();
-        let newDate;
-
-        if (subscription === 'Trial') {
-            let days = 5;
-
-            if (duration === '15d') {
-                // Add 15 days
-                days = 15
-            }
-            else if (duration === '5d') {
-                // Add 5 days
-                days = 5
-            }
-
-            newDate = new Date(new Date().setDate(currentDate.getDate() + days));
-        } else {
-            if (duration === 'monthly') {
-                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
-            }
-            else if (duration === 'half-yearly') {
-                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
-            }
-            else if (duration === 'yearly') {
-                newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
-            }
-            else if (duration === 'custom') {
-                newDate = new Date(new Date().setDate(currentDate.getDate() + rdays));
-            }
-            else {
-                return { status: false, msg: 'Invalid duration' };
-            }
-        }
-
-        const data = {
-            name,
-            subscription,
-            createdAt: currentDate,
-            till: newDate,
-            duration,
-            amount,
-            isCancelled
-        }
-
-
-        let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
-        if (!result) {
-            return { status: false, msg: 'Failed to save user subscription' };
-        }
-
-        let normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
-        if (!isCancelled) {
-            const emailTemplate = welcomeSubscription(name, subscription, duration, normalizedNewDate.toDateString());
-
-            // Send welcome email
-            sendEmail(key, null, null, emailTemplate.subject, emailTemplate.body);
-
-            // Send payment email
-            if (subscription !== 'Trial') {
-                const paymentEmailTemplate = paymentReceiptEmail(name, subscription, duration, amount, normalizedNewDate.toDateString());
-                sendEmail(key, null, null, paymentEmailTemplate.subject, paymentEmailTemplate.body);
-            }
-        }
-
-        return { status: true };
-    } catch (error) {
-        return { status: false, msg: error.message || 'Something went wrong while saving the subscription' };
-    }
-}
-
-
 app.post('/nextsub-upgrade', async (req, res) => {
     try {
         const { email, plan, duration, price, isDowngrade } = req.body;
         
-        // Get data from "xmati-users" bucket
-        let userData = await getFromS3("xmati-users", `${email}.txt`);
-        userData = await streamToString(userData);
-        userData = JSON.parse(userData);
+        let result = await nextSubUpgrade(email, plan, duration, price, isDowngrade);
 
-        userData.nextSubs = {
-            ...userData.nextSubs,
-            plan,
-            duration,
-            price,
-            isDowngrade
-        };
-
-        // Save updated users data back to "xmati-users" bucket
-        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
-        if (!userSaveResponse) {
-            return res.status(400).json({ success: false, message: 'Failed to update user data' });
+        if(result.success === true){
+            return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
         }
 
-        // Prepare email template
-        const emailTemplate = trialNextsubUpgradeEmail(userData.fullName, plan, duration, price);
-        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
-
-        return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+        return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
     } catch (error) {
         console.log(error);
         return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
@@ -526,56 +431,17 @@ app.post('/remove-nextsub', async (req, res) => {
     }
 });
 
-async function clearNextSubs(email, userData) {
-    try {
-        // delete "nextSubs" key from user data
-        delete userData.nextSubs;
-
-        // Save updated user data back to "xmati-users" bucket
-        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
-        if (!userSaveResponse) {
-            throw new Error('Failed to save user data');
-        }
-    } catch (error) {
-        console.error(`Error clearing nextSubs for ${email}:`, error);
-    }
-}
 
 app.post('/pro-suggestion-update', async (req, res) => {
     try {
         const { email, plan, duration, price } = req.body;
 
-        // Get data from "xmati-users" bucket
-        let userData = await getFromS3("xmati-users", `${email}.txt`);
-        userData = await streamToString(userData);
-        userData = JSON.parse(userData);
+        let result = await proSuggestionUpgrade(email, plan, duration, price);
 
-        // Check if the user is on a Starter plan and set nextSubs Value
-        if (plan === 'Starter') {
-            userData.nextSubs = {
-                ...userData.nextSubs,
-                suggested: true
-            };
+        if(result.success === true){
+            return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
         }
-        else {
-            userData.nextSubs = {
-                plan,
-                duration,
-                price,
-                suggested: true
-            };
-        }
-        // Save updated users data back to "xmati-users" bucket
-        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
-        if (!userSaveResponse) {
-            return res.status(400).json({ success: false, message: 'Failed to update user data' });
-        }
-
-        // Prepare email template
-        const emailTemplate = proSuggestionUpdateEmail((plan === 'Starter') ? false : true, userData.fullName);
-        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
-
-        return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+        return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
     } catch (error) {
         console.log(error);
         return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
@@ -690,6 +556,7 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
                 }
 
                 // Remove unwanted keys from userData
+                // eslint-disable-next-line no-unused-vars
                 const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userData;
 
 
@@ -729,6 +596,7 @@ app.post('/save-bot', async (req, res) => {
         }
 
         // Check if the environment is production before saving to "xmatibots-prod" bucket
+        // eslint-disable-next-line no-undef
         const dbEnv = process.env.DB_ENV;
         if (dbEnv == 'prod'){
             await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
@@ -745,7 +613,7 @@ app.post('/save-bot', async (req, res) => {
 
         return res.status(200).json({ status: true, message: 'Bot saved successfully' });
     } catch (error) {
-        return res.status(500).json({ status: false, error: 'Something went wrong while saving the bot' });
+        return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
     }
 });
 
@@ -761,7 +629,7 @@ app.post('/get-bots', async (req, res) => {
 
         return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
     } catch (error) {
-        return res.status(500).json({ status: false, error: 'Something went wrong while getting the bot' });
+        return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
     }
 });
 
@@ -776,7 +644,7 @@ app.get('/get-all-bots', async (req, res) => {
 
         return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
     } catch (error) {
-        return res.status(500).json({ status: false, error: 'Something went wrong while getting the bot' });
+        return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
     }
 });
 
@@ -799,7 +667,7 @@ app.post('/delete-bot', async (req, res) => {
 
         return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
     } catch (error) {
-        return res.status(500).json({ status: false, error: 'Something went wrong while deleting the bot' });
+        return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
     }
 });
 
@@ -849,17 +717,17 @@ app.post('/forgot-pass', async (req, res) => {
         data = JSON.parse(data);
         let updatedData = { ...data, password }
 
-        await saveToS3(
-            "xmati-users",
-            `${email}.txt`,
-            `${JSON.stringify(updatedData)}`
-        );
-
-        // Send confirmation email
+      let stats = await setUser(email, updatedData);
+        if (stats) {
+              // Send confirmation email
         const passwordChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
         sendEmail(email, null, null, passwordChangeEmailTemplate.subject, passwordChangeEmailTemplate.body);
 
-        res.status(200).send('Password updated');
+         res.status(200).send('Password updated');
+        }
+        else {
+            return "error";
+        } 
     } catch (error) {
         console.log(error);
         return res.status(500).json({ status: false, error: 'Something went wrong while updating the password' });
@@ -1193,51 +1061,51 @@ async function makePayment(paymentIntentId, paymentMethodId) {
 }
 
 
-app.post('/create-stripe-subscription', async (req, res) => {
-    try {
-        const { customerId, subscription, duration } = req.body;
+// app.post('/create-stripe-subscription', async (req, res) => {
+//     try {
+//         const { customerId, subscription, duration } = req.body;
 
-        // Validate required fields
-        if (!customerId || !subscription || !duration) {
-            return res.status(400).json({ success: false, message: 'Customer ID, subscription, and duration are required' });
-        }
+//         // Validate required fields
+//         if (!customerId || !subscription || !duration) {
+//             return res.status(400).json({ success: false, message: 'Customer ID, subscription, and duration are required' });
+//         }
 
-        // Map subscription and duration to priceId
-        const priceKey = `STRIPE_${subscription.toUpperCase()}-${duration.toUpperCase()}`;
-        console.log('Price Key:', priceKey.trim());
-        const priceId = process.env[priceKey.trim()];
+//         // Map subscription and duration to priceId
+//         const priceKey = `STRIPE_${subscription.toUpperCase()}-${duration.toUpperCase()}`;
+//         console.log('Price Key:', priceKey.trim());
+//         const priceId = process.env[priceKey.trim()];
 
-        console.log('Creating subscription with priceId:', priceId);
-        if (!priceId) {
-            return res.status(400).json({ success: false, message: `Invalid subscription or duration: ${subscription}, ${duration}` });
-        }
+//         console.log('Creating subscription with priceId:', priceId);
+//         if (!priceId) {
+//             return res.status(400).json({ success: false, message: `Invalid subscription or duration: ${subscription}, ${duration}` });
+//         }
 
-        // Create the subscription
-        const subscriptionResponse = await stripe.subscriptions.create({
-            customer: customerId,
-            items: [{ price: priceId }],
-            payment_behavior: 'default_incomplete',
-            metadata: {
-                subscription,
-                duration
-            },
-            expand: ['latest_invoice.payment_intent'], // Expand payment intent for additional details
-        });
+//         // Create the subscription
+//         const subscriptionResponse = await stripe.subscriptions.create({
+//             customer: customerId,
+//             items: [{ price: priceId }],
+//             payment_behavior: 'default_incomplete',
+//             metadata: {
+//                 subscription,
+//                 duration
+//             },
+//             expand: ['latest_invoice.payment_intent'], // Expand payment intent for additional details
+//         });
 
-        if (!subscriptionResponse) {
-            return res.status(400).json({ success: false, message: 'Failed to create subscription' });
-        }
+//         if (!subscriptionResponse) {
+//             return res.status(400).json({ success: false, message: 'Failed to create subscription' });
+//         }
 
-        // Return subscription details
-        return res.status(200).json({
-            success: true,
-            subscriptionId: subscriptionResponse.id,
-        });
-    } catch (error) {
-        console.error('Error creating subscription:', error.message);
-        return res.status(500).json({ success: false, message: error.message });
-    }
-});
+//         // Return subscription details
+//         return res.status(200).json({
+//             success: true,
+//             subscriptionId: subscriptionResponse.id,
+//         });
+//     } catch (error) {
+//         console.error('Error creating subscription:', error.message);
+//         return res.status(500).json({ success: false, message: error.message });
+//     }
+// });
 
 
 app.post('/failed-payment', async (req, res) => {
@@ -1413,7 +1281,7 @@ app.post('/refund-amount', async (req, res) => {
         const numericAmount = parseFloat(amount.replace(/^\$/, ''));
         // refund the amount
         if (numericAmount > 0.00) {
-            const refund = await stripe.refunds.create({
+            await stripe.refunds.create({
                 charge: chargeId,
                 amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
                 reason: reason || 'requested_by_customer',
@@ -1440,7 +1308,7 @@ app.post('/downgrade-subscription', async (req, res) => {
             return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
         }
 
-        // Create a new subscription with the next sub
+        return res.status(200).json({ success: true, message: 'Subscription downgraded successfully' });
     } catch (err) {
         console.error('Downgrading issue:', err.message);
         res.status(500).json({ success: false, message: err.message });
@@ -1459,7 +1327,7 @@ app.post('/cancel-subscription', async (req, res) => {
 
         // refund the amount
         if (refundDetails.refundAmount > 0.00) {
-            const refund = await stripe.refunds.create({
+           await stripe.refunds.create({
                 charge: chargeId,
                 amount: Math.round(refundDetails.refundAmount * 100), // Stripe expects the amount in cents
                 reason: reason || 'requested_by_customer',
@@ -1537,12 +1405,12 @@ app.post('/download-csv', (req, res) => {
             return res.status(400).send('Expected an array of objects');
         }
 
-
         const fields = Object.keys(data[0])
         const parser = new Parser({ fields })
         const csv = parser.parse(data)
 
         // Save file temporarily
+        // eslint-disable-next-line no-undef
         const filePath = path.join(__dirname, `${email}-data.csv`);
         fs.writeFileSync(filePath, csv);
 
@@ -1644,8 +1512,9 @@ app.get('/send-expiry-email', async (req, res) => {
 });
 
 async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining, isCancelled) {
+    let email;
     try {
-        const email = key.replace('.txt', '');
+        email = key.replace('.txt', '');
         let emailTemplate;
         if (daysRemaining === -7) {
             emailTemplate = afterOneWeekExpiryEmail(name);
@@ -1695,6 +1564,7 @@ async function emailDraftSend(key, name, subscription, days, tillDate, amount, d
 // })
 
 app.get('/auto-sub-renewal', async (req, res) => {
+    let userKey, parsedUserData
     try {
         // Retrieve all keys from the 'xmati-subscriber' bucket
         const keys = await getFromS3ByPrefix('xmati-subscriber');
@@ -1737,7 +1607,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                     let amount = data.amount;
 
                     // Retrieve user data from 'xmati-users' bucket
-                    const userKey = key.key;
+                    userKey = key.key;
                     let userData = await getFromS3('xmati-users', userKey);
                     userData = await streamToString(userData);
 
@@ -1746,7 +1616,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         continue;
                     }
 
-                    const parsedUserData = JSON.parse(userData);
+                    parsedUserData = JSON.parse(userData);
 
                     // Check if next subscription details exist
                     if (parsedUserData.nextSubs) {
@@ -1852,7 +1722,7 @@ function streamToString(stream) {
 //cron job to send expiry email every day at 10:00 PM
 cron.schedule('25 18 * * *', async () => {
     try {
-        const response = await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
+        await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);

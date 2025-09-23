@@ -29,7 +29,7 @@ async function sendEmail(to, cc, bcc, subject, content) {
 
   try {
     // Send the email
-    let info = await transporter.sendMail(message);
+    await transporter.sendMail(message);
     //console.log('Message sent: %s', info.messageId);
     return true; // Return true if email was sent successfully
   } catch (error) {

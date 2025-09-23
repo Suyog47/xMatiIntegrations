@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+// eslint-disable-next-line no-undef
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 async function createPaymentIntent(amount, currency) {
