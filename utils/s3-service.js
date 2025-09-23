@@ -38,13 +38,7 @@ async function saveToS3(bucketName, key, content) {
             partSize: 1024 * 1024 * 20, // 20MB chunks
             leavePartsOnError: false
         });
-        // const command = new PutObjectCommand({
-        //     Bucket: bucketName,
-        //     Key: key,
-        //     Body: content,
-        // });
-        // await s3.send(command);
-
+     
         // Wait for the upload to complete
         await parallelUpload.done();
         return true;

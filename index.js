@@ -4,15 +4,7 @@ const cron = require('node-cron');
 const { Parser } = require('json2csv');
 const fs = require('fs');
 const path = require('path');
-// const { createBotReplica } = require('./src/amazon-lex/bot-functions/bot-replication');
-// const { startConvo, getDatafromS3 } = require('./src/amazon-lex/bot-functions/bot-conversation');
-// const { getTemplateFile, generateRandomId } = require('./utils/common-algo');
-// const { cloningDigitalAssistant } = require('./src/oracle-bot/bot-functions/bot-creation');
-// const { sendUserPrompt } = require('./src/oracle-bot/bot-functions/bot-conversation');
-// const { setWebhook } = require('./src/3rd-party-services/telegram/set-webhook');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
-// const { generateText, convertSpeechToText } = require('./src/gemini-llm/index');
-// const { createPaymentIntent } = require('./src/payment-gateway/stripe');
 const { sendEmail } = require('./utils/send-email');
 const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { setUser } = require('./src/authentication/user-auth/auth');
@@ -21,8 +13,7 @@ const { proSuggestionUpgrade } = require('./src/subscription-services/pro-sugges
 const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade'); 
 const { clearNextSubs } = require('./src/nextsub-clear');
 const { saveSubscriptionToS3 } = require('./src/save-subscription');
-// const { format } = require('date-fns-tz');
-
+const { saveDocument, getDocument, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
 const {
     paymentFailedEmail,
     renewalReminderEmail,
@@ -39,10 +30,6 @@ const {
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
-// const multer = require('multer');
-// const { SpeechClient } = require('@google-cloud/speech');
-// const { TranslationServiceClient } = require('@google-cloud/translate');
-// const Queue = require('bull');
 const http = require('http');
 
 require('dotenv').config();
@@ -58,12 +45,6 @@ app.use((req, res, next) => {
     res.setTimeout(0);
     next();
 });
-
-// const upload = multer({
-//     limits: {
-//         fileSize: 1024 * 1024 * 1024 // 1GB
-//     }
-// });
 
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
@@ -209,6 +190,35 @@ app.get('/', (req, res) => {
 //     }
 // });
 
+
+
+app.post('/mongo-save', async (req, res) => {
+    const saveRes = await saveDocument("xmati-users", "user123", { name: "Alice", plan: "premium" });
+    console.log("saveRes:", saveRes);
+
+    res.status(200).json({ status: "ok", saveRes });
+});
+
+app.get('/mongo-get', async (req, res) => {
+    const getRes = await getDocument("xmati-users", "user123");
+    console.log("retrieved doc:", getRes);
+
+    res.status(200).json({ status: "ok", getRes });
+});
+
+app.get('/mongo-delete', async (req, res) => {
+    const deleteRes = await deleteFromMongo("xmati-users", "user123");
+    console.log("deleteRes:", deleteRes);
+
+    res.status(200).json({ status: "ok", deleteRes });
+});
+
+app.get('/mongo-key-exists', async (req, res) => {
+    const keyExistsRes = await mongoKeyExists("xmati-users", "user123");
+    console.log("keyExistsRes:", keyExistsRes);
+
+    res.status(200).json({ status: "ok", keyExistsRes });
+});
 
 // Endpoint for user authentication through S3
 app.post('/user-auth', async (req, res) => {
