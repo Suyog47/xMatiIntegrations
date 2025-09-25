@@ -1,4 +1,4 @@
-const { saveToS3 } = require('../utils/s3-service');
+const { saveDocument,} = require("../utils/mongo-db");
 
 async function clearNextSubs(email, userData) {
     try {
@@ -6,7 +6,7 @@ async function clearNextSubs(email, userData) {
         delete userData.nextSubs;
 
         // Save updated user data back to "xmati-users" bucket
-        const userSaveResponse = await saveToS3("xmati-users", `${email}.txt`, JSON.stringify(userData));
+        const userSaveResponse = await saveDocument("xmati-users", `${email}`, JSON.stringify(userData));
         if (!userSaveResponse) {
             throw new Error('Failed to save user data');
         }

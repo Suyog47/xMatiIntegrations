@@ -1,14 +1,13 @@
-const s3Service = require("../../../utils/s3-service");
-const { Buffer } = require("buffer");
-
+// const s3Service = require("../../../utils/s3-service");
+// const { Buffer } = require("buffer");
+const { saveDocument, getDocument, mongoKeyExists } = require("../../../utils/mongo-db");
 
 async function login(email, password) {
     if (await checkUser(email)) {
-        let s3Data = await getUser(email);
-        s3Data = JSON.parse(s3Data)
+        let mongoData = await getDocument("xmati-users", `${email}`);
 
-        if (s3Data.password === password) {
-            return s3Data;
+        if (mongoData.password === password) {
+            return mongoData;
         } else {
             return "wrong pass";
         }
@@ -46,7 +45,7 @@ async function updateUserPassOrProfile(email, data) {
 }
 
 async function checkUser(email) {
-    const exists = await s3Service.keyExists('xmati-users', `${email}.txt`);
+    const exists = await mongoKeyExists('xmati-users', `${email}`);
     if (exists) {
         return true;
     } else {
@@ -56,9 +55,9 @@ async function checkUser(email) {
 
 async function setUser(email, data) {
     try {
-        await s3Service.saveToS3(
+        await saveDocument(
             "xmati-users",
-            `${email}.txt`,
+            `${email}`,
             `${JSON.stringify(data)}`
         );
         return true;
@@ -69,20 +68,20 @@ async function setUser(email, data) {
     }
 }
 
-async function getUser(email) {
-    const s3Content = await s3Service.getFromS3("xmati-users", `${email}.txt`);
-    const data = await streamToString(s3Content);
-    return data;
-}
+// async function getUser(email) {
+//     const s3Content = await getDocument("xmati-users", `${email}.txt`);
+//     const data = await streamToString(s3Content);
+//     return data;
+// }
 
 // Helper function to convert stream to string
-function streamToString(stream) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        stream.on("data", (chunk) => chunks.push(chunk));
-        stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-        stream.on("error", reject);
-    });
-}
+// function streamToString(stream) {
+//     return new Promise((resolve, reject) => {
+//         const chunks = [];
+//         stream.on("data", (chunk) => chunks.push(chunk));
+//         stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+//         stream.on("error", reject);
+//     });
+// }
 
 module.exports = { login, register, updateUserPassOrProfile, setUser };

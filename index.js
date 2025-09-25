@@ -1,19 +1,19 @@
 const express = require('express');
-const { Buffer } = require('buffer');
+// const { Buffer } = require('buffer');
 const cron = require('node-cron');
 const { Parser } = require('json2csv');
 const fs = require('fs');
 const path = require('path');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
-const { saveToS3, getFromS3, getFromS3ByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
+// const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { setUser } = require('./src/authentication/user-auth/auth');
 const { updateCard } = require('./src/update-card');
 const { proSuggestionUpgrade } = require('./src/subscription-services/pro-suggestion-upgrade'); 
 const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade'); 
 const { clearNextSubs } = require('./src/nextsub-clear');
 const { saveSubscriptionToS3 } = require('./src/save-subscription');
-const { saveDocument, getDocument, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
+const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
 const {
     paymentFailedEmail,
     renewalReminderEmail,
@@ -427,9 +427,7 @@ app.post('/remove-nextsub', async (req, res) => {
         const { email } = req.body;
 
         // Get data from "xmati-users" bucket
-        let userData = await getFromS3("xmati-users", `${email}.txt`);
-        userData = await streamToString(userData);
-        userData = JSON.parse(userData);
+        let userData = await getDocument("xmati-users", `${email}`);
 
         // Clear nextSubs if it exists
         await clearNextSubs(email, userData);
@@ -463,9 +461,8 @@ app.post('/get-subscription', async (req, res) => {
     try {
         const { key } = req.body;
 
-        let result = await getFromS3("xmati-subscriber", `${key}.txt`);
-        let data = await streamToString(result);
-        data = JSON.parse(data);
+        let result = await getDocument("xmati-subscriber", `${key}`);
+        let data = result;
         if (!result) {
             return res.status(400).json({ status: false, msg: 'Failed to get user subscription' });
         }
@@ -483,7 +480,7 @@ app.post('/set-maintenance', async (req, res) => {
         const { status } = req.body;
 
         // Save the maintenance status to S3
-        await saveToS3("xmati-extra", "maintenance-status.txt", JSON.stringify({ status }));
+        await saveDocument("xmati-extra", "maintenance-status", JSON.stringify({ status }));
 
         return res.status(200).json({ status: true, msg: 'Maintenance status updated successfully' });
     } catch (error) {
@@ -507,16 +504,13 @@ app.get('/get-maintenance', async (req, res) => {
 
 async function getMaintenance() {
     try {
-        let data = await getFromS3("xmati-extra", `maintenance-status.txt`);
+        let data = await getDocument("xmati-extra", `maintenance-status`);
 
         if (!data) {
             return { status: false };
         }
 
-        let mStatus = await streamToString(data);
-        mStatus = JSON.parse(mStatus);
-
-        return { status: true, maintenance: mStatus.status }
+        return { status: true, maintenance: data.status }
     }
     catch (error) {
         console.error('Error retrieving maintenance status:', error);
@@ -527,7 +521,7 @@ async function getMaintenance() {
 app.get('/get-all-users-subscriptions', async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
-        const userKeys = await getFromS3ByPrefix('xmati-users', '');
+        const userKeys = await getFromMongoByPrefix('xmati-users', '');
 
         if (!userKeys || userKeys.length === 0) {
             return res.status(404).json({ success: false, message: 'No users found' });
@@ -538,17 +532,14 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
         for (const userKey of userKeys) {
             try {
                 // Fetch user data
-                const userDataStream = await getFromS3('xmati-users', userKey.key);
-                const userDataString = await streamToString(userDataStream);
-                const userData = JSON.parse(userDataString);
+                const userDataStream = await getDocument('xmati-users', userKey.key);
 
                 // Fetch subscription data
-                const subscriptionDataStream = await getFromS3('xmati-subscriber', userKey.key);
-                const subscriptionDataString = await streamToString(subscriptionDataStream);
-                const subscriptionData = JSON.parse(subscriptionDataString);
+                const subscriptionDataStream = await getDocument('xmati-subscriber', userKey.key);
+                
 
                 // Fetch bots for the user
-                const botKeys = await getFromS3ByPrefix('xmatibots', userKey.key.replace('.txt', ''));
+                const botKeys = await getFromMongoByPrefix('xmatibots', userKey.key);
                 const botsData = [];
 
                 for (const botKey of botKeys) {
@@ -567,14 +558,14 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
 
                 // Remove unwanted keys from userData
                 // eslint-disable-next-line no-unused-vars
-                const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userData;
+                const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userDataStream;
 
 
                 // Combine user and subscription data
                 usersWithSubscriptions.push({
-                    email: userKey.key.replace('.txt', ''), // Extract email from key
+                    email: userKey.key, // Extract email from key
                     userData: filteredUserData,
-                    subscriptionData,
+                    subscriptionData: subscriptionDataStream,
                     botsData
                 });
             } catch (error) {
@@ -600,7 +591,7 @@ app.post('/save-bot', async (req, res) => {
         const { fullName, organizationName, key, data, from } = req.body;
 
 
-        let result = await saveToS3("xmatibots", key, JSON.stringify(data));
+        let result = await saveDocument("xmatibots", key, JSON.stringify(data));
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
         }
@@ -609,7 +600,7 @@ app.post('/save-bot', async (req, res) => {
         // eslint-disable-next-line no-undef
         const dbEnv = process.env.DB_ENV;
         if (dbEnv == 'prod'){
-            await saveToS3("xmati-backed-bots", key, JSON.stringify(data));
+            await saveDocument("xmati-backed-bots", key, JSON.stringify(data));
         }
 
         let email = key.split('_')[0]
@@ -632,7 +623,7 @@ app.post('/get-bots', async (req, res) => {
     try {
         const { email } = req.body;
 
-        let result = await getFromS3ByPrefix("xmatibots", `${email}_`);
+        let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to get bot' });
         }
@@ -647,7 +638,7 @@ app.post('/get-bots', async (req, res) => {
 app.get('/get-all-bots', async (req, res) => {
     try {
 
-        let result = await getFromS3ByPrefix("xmatibots", '');
+        let result = await getFromMongoByPrefix("xmatibots", '');
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to get bot' });
         }
@@ -663,7 +654,7 @@ app.post('/delete-bot', async (req, res) => {
     try {
         const { fullName, key } = req.body;
 
-        let result = await deleteFromS3("xmatibots", key);
+        let result = await deleteFromMongo("xmatibots", key);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to delete bot' });
         }
@@ -686,7 +677,7 @@ app.post('/check-user', async (req, res) => {
     try {
         const { email, from } = req.body;
 
-        let result = await keyExists("xmati-users", `${email}.txt`);
+        let result = await mongoKeyExists("xmati-users", `${email}`);
         if (result) {
             // Generate a random 4-digit OTP
             const otp = Math.floor(1000 + Math.random() * 9000);
@@ -722,9 +713,9 @@ app.post('/forgot-pass', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const s3Content = await getFromS3("xmati-users", `${email}.txt`);
-        let data = await streamToString(s3Content);
-        data = JSON.parse(data);
+        const s3Content = await getDocument("xmati-users", `${email}`);
+        let data = s3Content;
+
         let updatedData = { ...data, password }
 
       let stats = await setUser(email, updatedData);
@@ -1255,23 +1246,19 @@ app.post('/trial-cancellation', async (req, res) => {
         const { email } = req.body;
 
         // Get data from "xmati-users" bucket
-        let userData = await getFromS3("xmati-users", `${email}.txt`);
-        userData = await streamToString(userData);
-        userData = JSON.parse(userData);
+        let userData = await getDocument("xmati-users", `${email}`);
 
         // Remove "nextSubs" key from user data
         await clearNextSubs(email, userData);
 
         // Get data from "xmati-subscribers" bucket
-        let subscriberData = await getFromS3("xmati-subscriber", `${email}.txt`);
-        subscriberData = await streamToString(subscriberData);
-        subscriberData = JSON.parse(subscriberData);
+        let subscriberData = await getDocument("xmati-subscriber", `${email}`);
 
         // Set "isCancelled" key to true
         subscriberData.isCancelled = true;
 
         // Save updated subscriber data back to "xmati-subscriber" bucket
-        const subscriberSaveResponse = await saveToS3("xmati-subscriber", `${email}.txt`, JSON.stringify(subscriberData));
+        const subscriberSaveResponse = await saveDocument("xmati-subscriber", `${email}`, JSON.stringify(subscriberData));
         if (!subscriberSaveResponse) {
             return res.status(400).json({ success: false, message: 'Failed to update subscriber data' });
         }
@@ -1358,9 +1345,7 @@ app.post('/cancel-subscription', async (req, res) => {
 
 
         // Get data from "xmati-users" bucket
-        let userData = await getFromS3("xmati-users", `${email}.txt`);
-        userData = await streamToString(userData);
-        userData = JSON.parse(userData);
+        let userData = await getDocument("xmati-users", `${email}`);
 
         // Clear nextSub details (if exists)
         await clearNextSubs(email, userData);
@@ -1446,7 +1431,7 @@ app.post('/download-csv', (req, res) => {
 app.get('/send-expiry-email', async (req, res) => {
     try {
         // Retrieve all keys from the 'xmati-subscriber' bucket
-        const keys = await getFromS3ByPrefix('xmati-subscriber');
+        const keys = await getFromMongoByPrefix('xmati-subscriber');
 
         if (!keys || keys.length === 0) {
             return res.status(404).json({ status: false, message: 'No subscriptions found' });
@@ -1460,7 +1445,7 @@ app.get('/send-expiry-email', async (req, res) => {
 
         for (const key of keys) {
             try {
-                const data = JSON.parse(key.data);
+                const data = key.data;
                 let amount = data.amount;
                 let subscription = data.subscription;
 
@@ -1489,8 +1474,7 @@ app.get('/send-expiry-email', async (req, res) => {
 
                 if ([15, 7, 5, 3, 1, -7].includes(daysRemaining)) {
                     const userKey = key.key;
-                    let userData = await getFromS3('xmati-users', userKey);
-                    userData = await streamToString(userData);
+                    let userData = await getDocument('xmati-users', userKey);
 
                     if (!userData) {
                         console.error(`User data not found for key ${userKey}`);
@@ -1524,7 +1508,7 @@ app.get('/send-expiry-email', async (req, res) => {
 async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining, isCancelled) {
     let email;
     try {
-        email = key.replace('.txt', '');
+        email = key;
         let emailTemplate;
         if (daysRemaining === -7) {
             emailTemplate = afterOneWeekExpiryEmail(name);
@@ -1577,7 +1561,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
     let userKey, parsedUserData
     try {
         // Retrieve all keys from the 'xmati-subscriber' bucket
-        const keys = await getFromS3ByPrefix('xmati-subscriber');
+        const keys = await getFromMongoByPrefix('xmati-subscriber');
 
         if (!keys || keys.length === 0) {
             return res.status(404).json({ status: false, message: 'No subscriptions found' });
@@ -1588,7 +1572,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
         for (const key of keys) {
             try {
-                const data = JSON.parse(key.data);
+                const data = key.data;
 
                 // Validate and normalize the 'till' date
                 if (!data.till) {
@@ -1618,15 +1602,14 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     // Retrieve user data from 'xmati-users' bucket
                     userKey = key.key;
-                    let userData = await getFromS3('xmati-users', userKey);
-                    userData = await streamToString(userData);
+                    let userData = await getDocument('xmati-users', userKey);
 
                     if (!userData) {
                         console.error(`User data not found for key ${userKey}`);
                         continue;
                     }
 
-                    parsedUserData = JSON.parse(userData);
+                    parsedUserData = userData;
 
                     // Check if next subscription details exist
                     if (parsedUserData.nextSubs) {
@@ -1657,7 +1640,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                         'usd',
                         { id: customerId },
                         paymentMethodId,
-                        userKey.replace('.txt', ''), // Extract email from key
+                        userKey, // Extract email from key
                         subscription,
                         duration
                     );
@@ -1686,7 +1669,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
                     // Call saveSubscriptionToS3 after successful payment
                     const saveSubscriptionResponse = await saveSubscriptionToS3(
-                        userKey.replace('.txt', ''), // Email
+                        userKey, // Email
                         parsedUserData.fullName,
                         subscription,
                         duration,
@@ -1708,7 +1691,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
             }
             finally {
                 // Clear nextSubs if it exists
-                await clearNextSubs(userKey.replace('.txt', ''), parsedUserData);
+                await clearNextSubs(userKey, parsedUserData);
             }
         }
 
@@ -1719,14 +1702,14 @@ app.get('/auto-sub-renewal', async (req, res) => {
     }
 });
 
-function streamToString(stream) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        stream.on("data", (chunk) => chunks.push(chunk));
-        stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-        stream.on("error", reject);
-    });
-}
+// function streamToString(stream) {
+//     return new Promise((resolve, reject) => {
+//         const chunks = [];
+//         stream.on("data", (chunk) => chunks.push(chunk));
+//         stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+//         stream.on("error", reject);
+//     });
+// }
 
 
 //cron job to send expiry email every day at 10:00 PM

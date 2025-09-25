@@ -1,8 +1,7 @@
 // Import or define the required helper functions at the top of the file
-const { saveToS3 } = require('../utils/s3-service');
-const { welcomeSubscription } = require('../templates/email_template');
+const { saveDocument,} = require("../utils/mongo-db");
+const { welcomeSubscription, paymentReceiptEmail } = require('../templates/email_template');
 const { sendEmail } = require('../utils/send-email');
-const { paymentReceiptEmail } = require('../templates/email_template');
 
 async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
     try {
@@ -50,7 +49,7 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
             isCancelled
         }
 
-        let result = await saveToS3("xmati-subscriber", `${key}.txt`, JSON.stringify(data));
+        let result = await saveDocument("xmati-subscriber", `${key}`, JSON.stringify(data));
         if (!result) {
             return { status: false, msg: 'Failed to save user subscription' };
         }
