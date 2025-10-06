@@ -119,7 +119,7 @@ async function deleteFromMongo(collectionName, key) {
             return true;
         } else {
             console.warn(`Key: ${key} not found.`);
-            return false;
+            return true; // Key not found is not an error
         }
     } catch (error) {
         console.error("Error deleting from Mongo:", error);
