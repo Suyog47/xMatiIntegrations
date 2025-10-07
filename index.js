@@ -1,9 +1,6 @@
 const express = require('express');
 // const { Buffer } = require('buffer');
 const cron = require('node-cron');
-const { Parser } = require('json2csv');
-const fs = require('fs');
-const path = require('path');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
 const { forgotPass } = require('./src/authentication/forgot-pass');
@@ -14,6 +11,7 @@ const { proSuggestionUpgrade } = require('./src/subscription-services/pro-sugges
 const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade');
 const { clearNextSubs } = require('./src/subscription-services/nextsub-clear');
 const { saveSubscriptionToS3 } = require('./src/subscription-services/save-subscription');
+const { cancelSubscription } = require('./src/subscription-services/cancel-subs');
 const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
 const { saveBot } = require('./src/bot-services/save-bot');
 const { deleteBot } = require('./src/bot-services/delete-bot');
@@ -24,14 +22,15 @@ const {
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
     paymentMethodUpdateConfirmationEmail,
-    subscriptionCancellationEmail,
     registrationEmailVerificationOtpEmail,
     botUpdateConfirmationEmail } = require('./templates/email_template');
+const { downloadCSV } = require('./src/csv-download');
 const cors = require("cors");
 const axios = require('axios');
 const app = express();
 const http = require('http');
 const { checkUser } = require('./src/authentication/check-user');
+const { trialCancellation } = require('./src/subscription-services/trial-cancel');
 
 require('dotenv').config();
 app.use(cors());
@@ -782,7 +781,6 @@ app.post('/forgot-pass', async (req, res) => {
 //     }
 // });
 
-
 async function getOrCreateCustomerByEmail(email) {
     try {
 
@@ -806,6 +804,7 @@ async function getOrCreateCustomerByEmail(email) {
         return false;
     }
 }
+
 
 app.post('/attach-payment-method', async (req, res) => {
     const { email, paymentMethodId, customerId } = req.body;
@@ -1049,6 +1048,29 @@ async function makePayment(paymentIntentId, paymentMethodId) {
 //     }
 // });
 
+app.post('/refund-amount', async (req, res) => {
+    try {
+        const { chargeId, reason, amount } = req.body;
+
+        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
+        // refund the amount
+        if (numericAmount > 0.00) {
+            await stripe.refunds.create({
+                charge: chargeId,
+                amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
+                reason: reason || 'requested_by_customer',
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+        });
+    } catch (e) {
+        console.error('Refund error:', e.message);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 
 app.post('/failed-payment', async (req, res) => {
     try {
@@ -1068,6 +1090,31 @@ app.post('/failed-payment', async (req, res) => {
     }
 });
 
+
+app.post('/get-stripe-transactions', async (req, res) => {
+    const { email } = req.body
+
+    try {
+        const customers = await stripe.customers.list({ email, limit: 1 })
+        if (!customers.data.length) {
+            return res.status(404).json({ error: 'Customer not found' })
+        }
+
+        const customerId = customers.data[0].id
+
+        // Get latest 100 charges
+        const charges = await stripe.charges.list({
+            customer: customerId,
+            limit: 100,
+            expand: ['data.refunds'],
+        })
+
+        return res.status(200).json({ charges: charges.data })
+    } catch (err) {
+        console.error(err)
+        return res.status(400).json({ error: 'Failed to retrieve transactions' })
+    }
+})
 
 // function formatToISODate(date) {
 //     const d = new Date(date)
@@ -1186,52 +1233,14 @@ app.post('/trial-cancellation', async (req, res) => {
     try {
         const { email } = req.body;
 
-        // Get data from "xmati-users" bucket
-        let userData = await getDocument("xmati-users", `${email}`);
-
-        // Remove "nextSubs" key from user data
-        await clearNextSubs(email, userData);
-
-        // Get data from "xmati-subscribers" bucket
-        let subscriberData = await getDocument("xmati-subscriber", `${email}`);
-
-        // Set "isCancelled" key to true
-        subscriberData.isCancelled = true;
-
-        // Save updated subscriber data back to "xmati-subscriber" bucket
-        const subscriberSaveResponse = await saveDocument("xmati-subscriber", `${email}`, JSON.stringify(subscriberData));
-        if (!subscriberSaveResponse) {
-            return res.status(400).json({ success: false, message: 'Failed to update subscriber data' });
+      let result = await trialCancellation(email);
+        if (!result) {
+            return res.status(400).json({ success: false, message: 'Failed to cancel after trial subscription' });
         }
 
-        return res.status(200).json({ success: true, message: 'Trial subscription cancelled successfully' });
+        return res.status(200).json({ success: true, message: 'After Trial subscription cancelled successfully' });
     } catch (err) {
-        console.error('Trial cancellation error:', err.message);
         res.status(500).json({ success: false, message: 'Something went wrong', error: err.message });
-    }
-});
-
-
-app.post('/refund-amount', async (req, res) => {
-    try {
-        const { chargeId, reason, amount } = req.body;
-
-        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
-        // refund the amount
-        if (numericAmount > 0.00) {
-            await stripe.refunds.create({
-                charge: chargeId,
-                amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
-                reason: reason || 'requested_by_customer',
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-        });
-    } catch (e) {
-        console.error('Refund error:', e.message);
-        res.status(500).json({ success: false, message: e.message });
     }
 });
 
@@ -1258,42 +1267,10 @@ app.post('/cancel-subscription', async (req, res) => {
     try {
         const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
 
-        if (!refundDetails.status) {
-            console.log('Refund calculation error:', refundDetails.message);
-            return res.status(400).json({ success: false, message: refundDetails.message });
+        let result = await cancelSubscription(chargeId, reason, email, fullName, subscription, amount, refundDetails);
+        if (!result) {
+            return res.status(400).json({ success: false, message: 'Failed to cancel subscription' });
         }
-
-        // refund the amount
-        if (refundDetails.refundAmount > 0.00) {
-            await stripe.refunds.create({
-                charge: chargeId,
-                amount: Math.round(refundDetails.refundAmount * 100), // Stripe expects the amount in cents
-                reason: reason || 'requested_by_customer',
-            });
-        }
-
-        let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
-        if (!response.status) {
-            console.log('Failed to save subscription data:', response.msg);
-            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
-        }
-
-        const currentDate = new Date();
-        const newDate = new Date(new Date().setDate(currentDate.getDate() + refundDetails.daysRemainingInCycle));
-
-        let normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-        let normalizedNewDate = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
-
-
-        // Get data from "xmati-users" bucket
-        let userData = await getDocument("xmati-users", `${email}`);
-
-        // Clear nextSub details (if exists)
-        await clearNextSubs(email, userData);
-
-        // Send a cancellation email
-        const cancelEmail = subscriptionCancellationEmail(fullName, subscription, normalizedCurrentDate, normalizedNewDate, refundDetails.daysRemainingInCycle, refundDetails.refundAmount);
-        sendEmail(email, null, null, cancelEmail.subject, cancelEmail.body);
 
         return res.status(200).json({
             success: true,
@@ -1306,61 +1283,16 @@ app.post('/cancel-subscription', async (req, res) => {
 });
 
 
-app.post('/get-stripe-transactions', async (req, res) => {
-    const { email } = req.body
-
-    try {
-        const customers = await stripe.customers.list({ email, limit: 1 })
-        if (!customers.data.length) {
-            return res.status(404).json({ error: 'Customer not found' })
-        }
-
-        const customerId = customers.data[0].id
-
-        // Get latest 100 charges
-        const charges = await stripe.charges.list({
-            customer: customerId,
-            limit: 100,
-            expand: ['data.refunds'],
-        })
-
-        return res.status(200).json({ charges: charges.data })
-    } catch (err) {
-        console.error(err)
-        return res.status(400).json({ error: 'Failed to retrieve transactions' })
-    }
-})
-
-
 // CSV download endpoint
 app.post('/download-csv', (req, res) => {
     try {
         const { data, email } = req.body;
 
-        if (!Array.isArray(data)) {
-            return res.status(400).send('Expected an array of objects');
+        let result = downloadCSV(data, email, res);
+        if (!result) {
+            return res.status(400).json({ success: false, message: 'Failed to generate CSV' });
         }
-
-        const fields = Object.keys(data[0])
-        const parser = new Parser({ fields })
-        const csv = parser.parse(data)
-
-        // Save file temporarily
-        // eslint-disable-next-line no-undef
-        const filePath = path.join(__dirname, `${email}-data.csv`);
-        fs.writeFileSync(filePath, csv);
-
-        // Use res.download to trigger download
-        res.download(filePath, `${email}-data.csv`, (err) => {
-            if (err) {
-                console.error('Download error:', err);
-                res.status(500).send('Download failed');
-            }
-
-            // delete file after sending
-            fs.unlinkSync(filePath);
-        });
-
+      
         // res.status(200).send('success');
     } catch (err) {
         console.error(err);
@@ -1445,6 +1377,7 @@ app.get('/send-expiry-email', async (req, res) => {
         return res.status(500).json({ status: false, message: 'Something went wrong', error: error.message });
     }
 });
+
 
 async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining, isCancelled) {
     let email;
@@ -1643,6 +1576,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
     }
 });
 
+
 // function streamToString(stream) {
 //     return new Promise((resolve, reject) => {
 //         const chunks = [];
@@ -1662,7 +1596,6 @@ cron.schedule('25 18 * * *', async () => {
         console.error('Error executing cron job:', error.message);
     }
 });
-
 
 // cron job to auto-renew subscriptions every day at 11:55 PM
 cron.schedule('55 23 * * *', async () => {
