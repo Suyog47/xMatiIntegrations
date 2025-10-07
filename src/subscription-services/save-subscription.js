@@ -1,7 +1,7 @@
 // Import or define the required helper functions at the top of the file
-const { saveDocument,} = require("../utils/mongo-db");
-const { welcomeSubscription, paymentReceiptEmail } = require('../templates/email_template');
-const { sendEmail } = require('../utils/send-email');
+const { saveDocument,} = require("../../utils/mongo-db");
+const { welcomeSubscription, paymentReceiptEmail } = require('../../templates/email_template');
+const { sendEmail } = require('../../utils/send-email');
 
 async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
     try {

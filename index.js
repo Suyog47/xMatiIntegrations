@@ -6,14 +6,17 @@ const fs = require('fs');
 const path = require('path');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
+const { forgotPass } = require('./src/authentication/forgot-pass');
 // const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
-const { setUser } = require('./src/authentication/user-auth/auth');
+const { getMaintenance } = require('./src/maintenance');
 const { updateCard } = require('./src/update-card');
-const { proSuggestionUpgrade } = require('./src/subscription-services/pro-suggestion-upgrade'); 
-const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade'); 
-const { clearNextSubs } = require('./src/nextsub-clear');
-const { saveSubscriptionToS3 } = require('./src/save-subscription');
+const { proSuggestionUpgrade } = require('./src/subscription-services/pro-suggestion-upgrade');
+const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade');
+const { clearNextSubs } = require('./src/subscription-services/nextsub-clear');
+const { saveSubscriptionToS3 } = require('./src/subscription-services/save-subscription');
 const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
+const { saveBot } = require('./src/bot-services/save-bot');
+const { deleteBot } = require('./src/bot-services/delete-bot');
 const {
     paymentFailedEmail,
     renewalReminderEmail,
@@ -21,9 +24,6 @@ const {
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
     paymentMethodUpdateConfirmationEmail,
-    botCreationSuccessEmail,
-    botDeletionConfirmationEmail,
-    forgotPasswordOtpEmail,
     subscriptionCancellationEmail,
     registrationEmailVerificationOtpEmail,
     botUpdateConfirmationEmail } = require('./templates/email_template');
@@ -31,6 +31,7 @@ const cors = require("cors");
 const axios = require('axios');
 const app = express();
 const http = require('http');
+const { checkUser } = require('./src/authentication/check-user');
 
 require('dotenv').config();
 app.use(cors());
@@ -339,7 +340,7 @@ app.post('/update-card-info', async (req, res) => {
     try {
         let result = await updateCard(email, customerId, paymentMethodId, data);
 
-        if(result.success === true){
+        if (result.success === true) {
             return res.status(200).json({
                 success: true,
                 msg: 'Stripe customer created and payment method attached successfully'
@@ -407,10 +408,10 @@ app.post('/save-subscription', async (req, res) => {
 app.post('/nextsub-upgrade', async (req, res) => {
     try {
         const { email, plan, duration, price, isDowngrade } = req.body;
-        
+
         let result = await nextSubUpgrade(email, plan, duration, price, isDowngrade);
 
-        if(result.success === true){
+        if (result.success === true) {
             return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
         }
 
@@ -446,7 +447,7 @@ app.post('/pro-suggestion-update', async (req, res) => {
 
         let result = await proSuggestionUpgrade(email, plan, duration, price);
 
-        if(result.success === true){
+        if (result.success === true) {
             return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
         }
         return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
@@ -502,22 +503,6 @@ app.get('/get-maintenance', async (req, res) => {
 });
 
 
-async function getMaintenance() {
-    try {
-        let data = await getDocument("xmati-extra", `maintenance-status`);
-
-        if (!data) {
-            return { status: false };
-        }
-
-        return { status: true, maintenance: data.status }
-    }
-    catch (error) {
-        console.error('Error retrieving maintenance status:', error);
-        return { status: false };
-    }
-}
-
 app.get('/get-all-users-subscriptions', async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
@@ -536,7 +521,7 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
 
                 // Fetch subscription data
                 const subscriptionDataStream = await getDocument('xmati-subscriber', userKey.key);
-                
+
 
                 // Fetch bots for the user
                 const botKeys = await getFromMongoByPrefix('xmatibots', userKey.key);
@@ -590,28 +575,10 @@ app.post('/save-bot', async (req, res) => {
     try {
         const { fullName, organizationName, key, data, from } = req.body;
 
-
-        let result = await saveDocument("xmatibots", key, JSON.stringify(data));
+        var result = await saveBot(fullName, organizationName, key, data, from);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to save bot' });
         }
-
-        // Check if the environment is production before saving to "xmatibots-prod" bucket
-        // eslint-disable-next-line no-undef
-        const dbEnv = process.env.DB_ENV;
-        if (dbEnv == 'prod'){
-            await saveDocument("xmati-backed-bots", key, JSON.stringify(data));
-        }
-
-        let email = key.split('_')[0]
-        let botName = (key.split('_')[1]).split('-')[1];
-
-        if (from == 'user') {
-            // Send email notification
-            const botSuccessEmail = botCreationSuccessEmail(fullName, organizationName, botName);
-            sendEmail(email, null, null, botSuccessEmail.subject, botSuccessEmail.body);
-        }
-
         return res.status(200).json({ status: true, message: 'Bot saved successfully' });
     } catch (error) {
         return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
@@ -654,17 +621,10 @@ app.post('/delete-bot', async (req, res) => {
     try {
         const { fullName, key } = req.body;
 
-        let result = await deleteFromMongo("xmatibots", key);
+        let result = await deleteBot(fullName, key);
         if (!result) {
             return res.status(400).json({ status: false, error: 'Failed to delete bot' });
         }
-
-        let email = key.split('_')[0]
-        let botName = (key.split('_')[1]).split('-')[1];
-
-        // Send email notification
-        const botDeleteEmail = botDeletionConfirmationEmail(fullName, botName);
-        sendEmail(email, null, null, botDeleteEmail.subject, botDeleteEmail.body);
 
         return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
     } catch (error) {
@@ -677,22 +637,13 @@ app.post('/check-user', async (req, res) => {
     try {
         const { email, from } = req.body;
 
-        let result = await mongoKeyExists("xmati-users", `${email}`);
-        if (result) {
-            // Generate a random 4-digit OTP
-            const otp = Math.floor(1000 + Math.random() * 9000);
+        let result = await checkUser(email, from);
 
-            if (from === 'forgot-pass') {
-                // Send OTP email notification
-                const forgotEmail = forgotPasswordOtpEmail(email, otp);
-                sendEmail(email, null, null, forgotEmail.subject, forgotEmail.body);
-            }
-
-            return res.status(200).json({ status: true, message: 'User exists', otp });
+        if (result.status) {
+            return res.status(200).json({ status: true, message: 'User exists', otp: result.otp });
         } else {
             return res.status(400).json({ status: false, message: 'No User' });
         }
-
     } catch (error) {
         console.log(error);
         return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
@@ -713,25 +664,15 @@ app.post('/forgot-pass', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const s3Content = await getDocument("xmati-users", `${email}`);
-        let data = s3Content;
-
-        let updatedData = { ...data, password }
-
-      let stats = await setUser(email, updatedData);
-        if (stats) {
-              // Send confirmation email
-        const passwordChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
-        sendEmail(email, null, null, passwordChangeEmailTemplate.subject, passwordChangeEmailTemplate.body);
-
-         res.status(200).send('Password updated');
+       let result = await forgotPass(email, password);
+        if (!result) {
+            return res.status(400).json({ status: false, msg: 'Failed to update password' });
         }
-        else {
-            return "error";
-        } 
+
+        return res.status(200).json({ status: true, msg: 'Password updated successfully' });
     } catch (error) {
         console.log(error);
-        return res.status(500).json({ status: false, error: 'Something went wrong while updating the password' });
+        return res.status(500).send('Something went wrong while updating the password');
     }
 });
 
@@ -1324,7 +1265,7 @@ app.post('/cancel-subscription', async (req, res) => {
 
         // refund the amount
         if (refundDetails.refundAmount > 0.00) {
-           await stripe.refunds.create({
+            await stripe.refunds.create({
                 charge: chargeId,
                 amount: Math.round(refundDetails.refundAmount * 100), // Stripe expects the amount in cents
                 reason: reason || 'requested_by_customer',

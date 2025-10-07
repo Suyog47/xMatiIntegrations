@@ -1,4 +1,4 @@
-const { saveDocument,} = require("../utils/mongo-db");
+const { saveDocument,} = require("../../utils/mongo-db");
 
 async function clearNextSubs(email, userData) {
     try {
