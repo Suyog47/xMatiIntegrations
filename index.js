@@ -1314,8 +1314,6 @@ app.get('/send-expiry-email', async (req, res) => {
         // Normalize currentDate to midnight
         const normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
 
-        const expiryDetails = [];
-
         for (const key of keys) {
             try {
                 const data = key.data;
@@ -1370,7 +1368,6 @@ app.get('/send-expiry-email', async (req, res) => {
         return res.status(200).json({
             status: true,
             message: 'Expiry details retrieved successfully',
-            data: expiryDetails
         });
     } catch (error) {
         console.error('Error in send-expiry-email:', error);
@@ -1486,7 +1483,7 @@ app.get('/auto-sub-renewal', async (req, res) => {
                     parsedUserData = userData;
 
                     // Check if next subscription details exist
-                    if (parsedUserData.nextSubs) {
+                    if (parsedUserData && parsedUserData.nextSubs) {
                         subscription = parsedUserData.nextSubs.plan
                         duration = parsedUserData.nextSubs.duration;
                         amount = `${parsedUserData.nextSubs.price}`;
@@ -1565,7 +1562,9 @@ app.get('/auto-sub-renewal', async (req, res) => {
             }
             finally {
                 // Clear nextSubs if it exists
-                await clearNextSubs(userKey, parsedUserData);
+                if (parsedUserData && parsedUserData.nextSubs) {
+                    await clearNextSubs(userKey, parsedUserData);
+                }
             }
         }
 
