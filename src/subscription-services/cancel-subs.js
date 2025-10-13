@@ -2,7 +2,7 @@ const { getDocument } = require('../../utils/mongo-db');
 const { clearNextSubs } = require('./nextsub-clear');
 const { subscriptionCancellationEmail } = require('../../templates/email_template');
 const { sendEmail } = require('../../utils/send-email');
-const { saveSubscriptionToS3 } = require('./save-subscription');
+const { SaveSubscription } = require('./save-subscription');
 
 // eslint-disable-next-line no-undef
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
@@ -24,7 +24,7 @@ async function cancelSubscription(chargeId, reason, email, fullName, subscriptio
             });
         }
 
-        let response = await saveSubscriptionToS3(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
+        let response = await SaveSubscription(email, fullName, subscription, 'custom', refundDetails.daysRemainingInCycle, amount, true);
         if (!response.status) {
             console.log('Failed to save subscription data:', response.msg);
             return false;

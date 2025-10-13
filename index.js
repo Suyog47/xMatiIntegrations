@@ -3,6 +3,8 @@ const express = require('express');
 const cron = require('node-cron');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
+const { sendExpiryEmail } = require('./src/cron-functions/send-expiry-email');
+const { autoRenewSubscriptions } = require('./src/cron-functions/auto-sub-renewal');
 const { forgotPass } = require('./src/authentication/forgot-pass');
 // const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { getMaintenance } = require('./src/maintenance');
@@ -10,15 +12,13 @@ const { updateCard } = require('./src/update-card');
 const { proSuggestionUpgrade } = require('./src/subscription-services/pro-suggestion-upgrade');
 const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade');
 const { clearNextSubs } = require('./src/subscription-services/nextsub-clear');
-const { saveSubscriptionToS3 } = require('./src/subscription-services/save-subscription');
+const { SaveSubscription } = require('./src/subscription-services/save-subscription');
 const { cancelSubscription } = require('./src/subscription-services/cancel-subs');
 const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
 const { saveBot } = require('./src/bot-services/save-bot');
 const { deleteBot } = require('./src/bot-services/delete-bot');
 const {
     paymentFailedEmail,
-    renewalReminderEmail,
-    afterOneWeekExpiryEmail,
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
     paymentMethodUpdateConfirmationEmail,
@@ -26,11 +26,11 @@ const {
     botUpdateConfirmationEmail } = require('./templates/email_template');
 const { downloadCSV } = require('./src/csv-download');
 const cors = require("cors");
-const axios = require('axios');
 const app = express();
 const http = require('http');
 const { checkUser } = require('./src/authentication/check-user');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
+const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
 
 require('dotenv').config();
 app.use(cors());
@@ -264,7 +264,7 @@ app.post('/user-auth', async (req, res) => {
                 msg = "User registered successfully";
 
                 // Save trial subscription
-                let response = await saveSubscriptionToS3(data.email, data.fullName, "Trial", "5d", 0, 0, false);
+                let response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
                 if (!response.status) {
                     status = 400;
                     success = false;
@@ -376,6 +376,7 @@ app.post('/get-card-details', async (req, res) => {
     }
 });
 
+
 app.post('/send-email', async (req, res) => {
     try {
         const { to, cc, bcc, subject, content } = req.body;
@@ -394,7 +395,7 @@ app.post('/send-email', async (req, res) => {
 
 app.post('/save-subscription', async (req, res) => {
     const { key, name, subscription, duration, amount } = req.body;
-    let result = await saveSubscriptionToS3(key, name, subscription, duration, 0, amount, false)
+    let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
 
     if (!result.status) {
         return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
@@ -663,7 +664,7 @@ app.post('/forgot-pass', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-       let result = await forgotPass(email, password);
+        let result = await forgotPass(email, password);
         if (!result) {
             return res.status(400).json({ status: false, msg: 'Failed to update password' });
         }
@@ -781,29 +782,6 @@ app.post('/forgot-pass', async (req, res) => {
 //     }
 // });
 
-async function getOrCreateCustomerByEmail(email) {
-    try {
-
-        const existingCustomers = await stripe.customers.list({
-            email,
-            limit: 1
-        })
-
-        if (existingCustomers.data.length > 0) {
-            return existingCustomers.data[0]  // Reuse existing customer
-        }
-
-        // Create new one if not found
-        return await stripe.customers.create({
-            email,
-            metadata: { guest: 'true' }
-        })
-    }
-    catch (err) {
-        console.log(err);
-        return false;
-    }
-}
 
 
 app.post('/attach-payment-method', async (req, res) => {
@@ -890,66 +868,6 @@ app.post('/create-payment-intent', async (req, res) => {
         return res.status(400).send('something went wrong' + err.message);
     }
 });
-
-
-async function getCardDetails(paymentMethodId) {
-    try {
-        const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-
-        if (!paymentMethod || paymentMethod.type !== 'card') {
-            return { success: false, message: 'Invalid or non-card payment method' };
-        }
-
-        const cardDetails = {
-            brand: paymentMethod.card.brand,
-            last4: paymentMethod.card.last4,
-            exp_month: paymentMethod.card.exp_month,
-            exp_year: paymentMethod.card.exp_year,
-            funding: paymentMethod.card.funding,  // This can be 'credit', 'debit', etc.
-        };
-
-        return { success: true, cardDetails };
-    } catch (error) {
-        console.error('Error retrieving card details:', error.message);
-        return { success: false, message: error.message };
-    }
-}
-
-
-async function createPaymentIntent(amount, currency, customerId, paymentMethodId, email, subscription, duration) {
-
-    const customer = (customerId && Object.keys(customerId).length > 0)
-        ? customerId
-        : await getOrCreateCustomerByEmail(email);
-
-    let response = await stripe.paymentIntents.create({
-        amount,
-        currency,
-        customer: customer.id,
-        payment_method: paymentMethodId,
-        metadata: {
-            email,
-            subscription,
-            duration
-        },
-        automatic_payment_methods: {
-            enabled: true,
-            allow_redirects: 'never', // Disable redirect-based payment methods
-        },
-        expand: ['charges'],
-    })
-
-    if (!response) {
-        return { success: false };
-    }
-    else {
-        // Get card details
-        const cardDetailsResponse = await getCardDetails(paymentMethodId);
-        return { success: true, data: response, card: cardDetailsResponse };
-    }
-}
-
-// app.post('/make-payment', async (req, res) => {
 //     try {
 //         const { clientSecret, cardDetails, subscription, duration, amount } = req.body;
 //         let response = await makePayment(clientSecret, cardDetails, subscription, duration);
@@ -964,42 +882,6 @@ async function createPaymentIntent(amount, currency, customerId, paymentMethodId
 //         return res.status(500).json({ success: false, error: 'Failed to make payment' });
 //     }
 // });
-
-
-async function makePayment(paymentIntentId, paymentMethodId) {
-    try {
-        const response = await stripe.paymentIntents.confirm(paymentIntentId, {
-            payment_method: paymentMethodId,
-        });
-
-        if (response.error) {
-            return { success: false, error: response.error.message };
-        }
-
-        // Check if the payment was successful
-        if (response.status === 'succeeded') {
-            return {
-                success: true,
-                paymentIntent: {
-                    id: response.id,
-                    amount: response.amount / 100,
-                    currency: response.currency,
-                    customer: response.customer,
-                    paymentMethod: response.payment_method,
-                    status: response.status,
-                    latestCharge: response.latest_charge,
-                },
-            };
-        } else {
-            return {
-                success: false,
-                error: `Payment failed with status: ${response.status}`,
-            };
-        }
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
-}
 
 
 // app.post('/create-stripe-subscription', async (req, res) => {
@@ -1048,26 +930,19 @@ async function makePayment(paymentIntentId, paymentMethodId) {
 //     }
 // });
 
+
 app.post('/refund-amount', async (req, res) => {
+    const { chargeId, reason, amount } = req.body;
+
     try {
-        const { chargeId, reason, amount } = req.body;
-
-        const numericAmount = parseFloat(amount.replace(/^\$/, ''));
-        // refund the amount
-        if (numericAmount > 0.00) {
-            await stripe.refunds.create({
-                charge: chargeId,
-                amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
-                reason: reason || 'requested_by_customer',
-            });
+        const refundSuccess = await refundCharge(chargeId, reason, amount);
+        if (!refundSuccess) {
+            return res.status(400).json({ success: false, error: 'Failed to process refund' });
         }
-
-        return res.status(200).json({
-            success: true,
-        });
-    } catch (e) {
-        console.error('Refund error:', e.message);
-        res.status(500).json({ success: false, message: e.message });
+        return res.status(200).json({ success: true, message: 'Refund processed successfully' });
+    } catch (error) {
+        console.error('Error processing refund:', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1095,26 +970,18 @@ app.post('/get-stripe-transactions', async (req, res) => {
     const { email } = req.body
 
     try {
-        const customers = await stripe.customers.list({ email, limit: 1 })
-        if (!customers.data.length) {
-            return res.status(404).json({ error: 'Customer not found' })
+        const transactionData = await getStripeTransaction(email);
+        if (!transactionData.status) {
+            return res.status(404).json({ error: transactionData.error });
         }
 
-        const customerId = customers.data[0].id
-
-        // Get latest 100 charges
-        const charges = await stripe.charges.list({
-            customer: customerId,
-            limit: 100,
-            expand: ['data.refunds'],
-        })
-
-        return res.status(200).json({ charges: charges.data })
+        return res.status(200).json({ charges: transactionData.charges });
     } catch (err) {
-        console.error(err)
-        return res.status(400).json({ error: 'Failed to retrieve transactions' })
+        console.error(err);
+        return res.status(400).json({ error: 'Failed to retrieve transactions' });
     }
 })
+
 
 // function formatToISODate(date) {
 //     const d = new Date(date)
@@ -1233,7 +1100,7 @@ app.post('/trial-cancellation', async (req, res) => {
     try {
         const { email } = req.body;
 
-      let result = await trialCancellation(email);
+        let result = await trialCancellation(email);
         if (!result) {
             return res.status(400).json({ success: false, message: 'Failed to cancel after trial subscription' });
         }
@@ -1249,7 +1116,7 @@ app.post('/downgrade-subscription', async (req, res) => {
     try {
         const { email, fullName, currentSub, daysRemaining, amount } = req.body;
 
-        let response = await saveSubscriptionToS3(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
+        let response = await SaveSubscription(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
         if (!response.status) {
             console.log('Failed to save subscription data:', response.msg);
             return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
@@ -1283,7 +1150,6 @@ app.post('/cancel-subscription', async (req, res) => {
 });
 
 
-// CSV download endpoint
 app.post('/download-csv', (req, res) => {
     try {
         const { data, email } = req.body;
@@ -1292,286 +1158,11 @@ app.post('/download-csv', (req, res) => {
         if (!result) {
             return res.status(400).json({ success: false, message: 'Failed to generate CSV' });
         }
-      
+
         // res.status(200).send('success');
     } catch (err) {
         console.error(err);
         res.status(500).send('Failed to generate CSV');
-    }
-});
-
-
-app.get('/send-expiry-email', async (req, res) => {
-    try {
-        // Retrieve all keys from the 'xmati-subscriber' bucket
-        const keys = await getFromMongoByPrefix('xmati-subscriber');
-
-        if (!keys || keys.length === 0) {
-            return res.status(404).json({ status: false, message: 'No subscriptions found' });
-        }
-
-        const currentDate = new Date();
-        // Normalize currentDate to midnight
-        const normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-
-        for (const key of keys) {
-            try {
-                const data = key.data;
-                let amount = data.amount;
-                let subscription = data.subscription;
-
-                // Validate and normalize the 'till' date
-                if (!data.till) {
-                    console.warn(`Skipping key ${key.key}: Missing 'till' value`);
-                    continue;
-                }
-
-                const tillDate = new Date(data.till);
-                if (isNaN(tillDate)) {
-                    console.warn(`Skipping key ${key.key}: Invalid 'till' value`);
-                    continue;
-                }
-
-                const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
-
-                // Calculate the difference in days
-                const timeDifference = normalizedTillDate - normalizedCurrentDate; // Difference in milliseconds
-                const daysRemaining = Math.ceil(timeDifference / (1000 * 60 * 60 * 24)); // Convert to days
-
-                // Check if the daysRemaining matches the required values
-                if (daysRemaining === 15 && data.subscription === 'Trial') {
-                    continue; // Skip this key
-                }
-
-                if ([15, 7, 5, 3, 1, -7].includes(daysRemaining)) {
-                    const userKey = key.key;
-                    let userData = await getDocument('xmati-users', userKey);
-
-                    if (!userData) {
-                        console.error(`User data not found for key ${userKey}`);
-                        continue;
-                    }
-
-                    if (data.subscription === 'Trial' && data.isCancelled === false) {
-                        amount = userData.nextSubs.price;
-                        subscription = userData.nextSubs.plan;
-                    }
-
-                    await emailDraftSend(key.key, data.name, subscription, daysRemaining, normalizedTillDate, amount, daysRemaining, data.isCancelled);
-                }
-            } catch (error) {
-                console.error(`Error processing key ${key.key}:`, error.message);
-                continue; // Skip this key and move to the next
-            }
-        }
-
-        return res.status(200).json({
-            status: true,
-            message: 'Expiry details retrieved successfully',
-        });
-    } catch (error) {
-        console.error('Error in send-expiry-email:', error);
-        return res.status(500).json({ status: false, message: 'Something went wrong', error: error.message });
-    }
-});
-
-
-async function emailDraftSend(key, name, subscription, days, tillDate, amount, daysRemaining, isCancelled) {
-    let email;
-    try {
-        email = key;
-        let emailTemplate;
-        if (daysRemaining === -7) {
-            emailTemplate = afterOneWeekExpiryEmail(name);
-        }
-        else {
-            emailTemplate = renewalReminderEmail(name, subscription, tillDate.toDateString(), amount, isCancelled);
-        }
-        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
-        console.log(`Email sent to ${email} about ${days} day(s) remaining.`);
-    } catch (emailError) {
-        console.error(`Failed to send email to ${email}:`, emailError.message);
-    }
-}
-
-// app.get('/dummy-pay', async (req, res) => {
-//     // Create a payment intent
-//     const paymentIntentResponse = await createPaymentIntent(
-//         1800, // Convert amount to cents
-//         'usd',
-//         { id: 'cus_SiiBZocXzw4jLO' },
-//         'pm_1RofuuPBSMPLjWxm2hynibr9',
-//         'suyogamin@gmail.com',
-//         '',
-//         ''
-//     );
-
-//     if (!paymentIntentResponse.success) {
-//         console.error(`Failed to create payment intent for key suyogamin@gmail.com:`, paymentIntentResponse.error);
-//         return;
-//     }
-
-//     const clientSecret = paymentIntentResponse.data.id;
-
-//     // Call the makePayment function
-//     const paymentResponse = await makePayment(
-//         clientSecret,
-//        'pm_1RofuuPBSMPLjWxm2hynibr9',
-//     );
-
-//     if (!paymentResponse.success) {
-//         console.error(`Failed to process payment for key suyogamin@gmail.com:`, paymentResponse.error);
-//         return res.status(400).send('Payment failed: ' + paymentResponse);
-//     }
-
-//     return res.send(paymentResponse);
-
-// })
-
-app.get('/auto-sub-renewal', async (req, res) => {
-    let userKey, parsedUserData
-    try {
-        // Retrieve all keys from the 'xmati-subscriber' bucket
-        const keys = await getFromMongoByPrefix('xmati-subscriber');
-
-        if (!keys || keys.length === 0) {
-            return res.status(404).json({ status: false, message: 'No subscriptions found' });
-        }
-
-        const currentDate = new Date();
-        const normalizedCurrentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-
-        for (const key of keys) {
-            try {
-                const data = key.data;
-
-                // Validate and normalize the 'till' date
-                if (!data.till) {
-                    console.warn(`Skipping key ${key.key}: Missing 'till' value`);
-                    continue;
-                }
-
-                const tillDate = new Date(data.till);
-                if (isNaN(tillDate)) {
-                    console.warn(`Skipping key ${key.key}: Invalid 'till' value`);
-                    continue;
-                }
-
-                const normalizedTillDate = new Date(tillDate.getFullYear(), tillDate.getMonth(), tillDate.getDate());
-
-                // Skip if subscription is "Cancelled"
-                if (data.isCancelled === true) {
-                    console.log(`Skipping auto-renewal for key ${key.key}: Subscription is Cancelled.`);
-                    continue;
-                }
-
-                // Compare expiry (till date) with the current date
-                if (normalizedTillDate.getTime() === normalizedCurrentDate.getTime()) {
-                    let subscription = data.subscription;
-                    let duration = data.duration;
-                    let amount = data.amount;
-
-                    // Retrieve user data from 'xmati-users' bucket
-                    userKey = key.key;
-                    let userData = await getDocument('xmati-users', userKey);
-
-                    if (!userData) {
-                        console.error(`User data not found for key ${userKey}`);
-                        continue;
-                    }
-
-                    parsedUserData = userData;
-
-                    // Check if next subscription details exist
-                    if (parsedUserData && parsedUserData.nextSubs) {
-                        subscription = parsedUserData.nextSubs.plan
-                        duration = parsedUserData.nextSubs.duration;
-                        amount = `${parsedUserData.nextSubs.price}`;
-                    }
-
-                    // Validate customerId and paymentMethodId
-                    const customerId = parsedUserData.stripeCustomerId;
-                    const paymentMethodId = parsedUserData.stripePayementId;
-
-                    if (!customerId || !paymentMethodId) {
-                        console.error(`Missing customerId or paymentMethodId for key ${userKey}`);
-                        continue;
-                    }
-
-                    // Extract numeric value from amount (e.g., "$18" -> 18)
-                    const numericAmount = parseFloat(amount.replace(/^\$/, ''));
-                    if (isNaN(numericAmount)) {
-                        console.error(`Invalid amount format for key ${userKey}: ${amount}`);
-                        continue;
-                    }
-
-                    // Create a payment intent
-                    const paymentIntentResponse = await createPaymentIntent(
-                        numericAmount * 100, // Convert amount to cents
-                        'usd',
-                        { id: customerId },
-                        paymentMethodId,
-                        userKey, // Extract email from key
-                        subscription,
-                        duration
-                    );
-
-                    if (!paymentIntentResponse.success) {
-                        console.error(`Failed to create payment intent for key ${userKey}:`, paymentIntentResponse.error);
-                        continue;
-                    }
-
-                    const clientSecret = paymentIntentResponse.data.id;
-
-                    // Call the makePayment function
-                    const paymentResponse = await makePayment(
-                        clientSecret,
-                        paymentMethodId,
-                    );
-
-                    if (!paymentResponse.success) {
-                        console.error(`Failed to process payment for key ${key.key}:`, paymentResponse.error);
-
-                        // Send the failed payment email
-                        const failedPaymentEmailTemplate = paymentFailedEmail(parsedUserData.fullName, subscription, amount);
-                        sendEmail(parsedUserData.email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
-                        continue;
-                    }
-
-                    // Call saveSubscriptionToS3 after successful payment
-                    const saveSubscriptionResponse = await saveSubscriptionToS3(
-                        userKey, // Email
-                        parsedUserData.fullName,
-                        subscription,
-                        duration,
-                        0,
-                        amount,
-                        false // isCancelled flag
-                    );
-
-                    if (!saveSubscriptionResponse.status) {
-                        console.error(`Failed to save subscription for key ${key.key}:`, saveSubscriptionResponse.msg);
-                        continue;
-                    }
-
-                    console.log(`Payment and subscription save successful for key ${key.key}`);
-                }
-            } catch (error) {
-                console.error(`Error processing key ${key.key}:`, error.message);
-                continue; // Skip this key and move to the next
-            }
-            finally {
-                // Clear nextSubs if it exists
-                if (parsedUserData && parsedUserData.nextSubs) {
-                    await clearNextSubs(userKey, parsedUserData);
-                }
-            }
-        }
-
-        return res.status(200).json({ status: true, message: 'Auto-renewal process completed successfully' });
-    } catch (error) {
-        console.error('Error in auto-sub-renewal:', error);
-        return res.status(500).json({ status: false, message: 'Something went wrong', error: error.message });
     }
 });
 
@@ -1587,9 +1178,11 @@ app.get('/auto-sub-renewal', async (req, res) => {
 
 
 //cron job to send expiry email every day at 10:00 PM
+
+
 cron.schedule('25 18 * * *', async () => {
     try {
-        await axios.get('https://www.app.xmati.ai/apis/send-expiry-email');
+        await sendExpiryEmail();
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
@@ -1599,7 +1192,7 @@ cron.schedule('25 18 * * *', async () => {
 // cron job to auto-renew subscriptions every day at 11:55 PM
 cron.schedule('55 23 * * *', async () => {
     try {
-        await axios.get('https://www.app.xmati.ai/apis/auto-sub-renewal');
+        await autoRenewSubscriptions();
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);

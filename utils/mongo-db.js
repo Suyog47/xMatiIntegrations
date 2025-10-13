@@ -21,7 +21,6 @@ async function connectMongo() {
     return db;
 }
 
-
 async function ensureCollection(collectionName) {
     const database = await connectMongo();
     const existing = await database.listCollections({ name: collectionName }).toArray();

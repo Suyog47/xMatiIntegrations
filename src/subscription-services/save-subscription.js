@@ -3,7 +3,7 @@ const { saveDocument,} = require("../../utils/mongo-db");
 const { welcomeSubscription, paymentReceiptEmail } = require('../../templates/email_template');
 const { sendEmail } = require('../../utils/send-email');
 
-async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
+async function SaveSubscription(key, name, subscription, duration, rdays = 0, amount, isCancelled = false) {
     try {
         const currentDate = new Date();
         let newDate;
@@ -76,4 +76,4 @@ async function saveSubscriptionToS3(key, name, subscription, duration, rdays = 0
     }
 }
 
-module.exports = { saveSubscriptionToS3 };
+module.exports = { SaveSubscription };
