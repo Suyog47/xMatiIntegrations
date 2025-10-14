@@ -21,9 +21,8 @@ const {
     paymentFailedEmail,
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
-    paymentMethodUpdateConfirmationEmail,
     registrationEmailVerificationOtpEmail,
-    botUpdateConfirmationEmail } = require('./templates/email_template');
+} = require('./templates/email_template');
 const { downloadCSV } = require('./src/csv-download');
 const cors = require("cors");
 const app = express();
@@ -31,9 +30,30 @@ const http = require('http');
 const { checkUser } = require('./src/authentication/check-user');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
+const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
+const { disableTimeout, errorHandler, validateRequiredFields } = require('./src/middleware/common');
 
 require('dotenv').config();
-app.use(cors());
+
+// List of allowed origins
+const allowedOrigins = [
+    'https://www.app.xmati.ai',
+    'https://app.xmati.ai',
+    'http://localhost:3000'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like Postman)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    }
+}));
 
 const server = http.createServer(app);
 
@@ -41,13 +61,14 @@ const server = http.createServer(app);
 server.timeout = 0;
 
 //Disable timeout before any heavy middlewares
-app.use((req, res, next) => {
-    res.setTimeout(0);
-    next();
-});
+app.use(disableTimeout);
 
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
+
+// JWT middleware is available in ./src/middleware/auth.js
+// Use authenticateToken for protected routes: app.get('/protected', authenticateToken, (req, res) => {})
+// Use optionalAuth for routes where authentication is optional
 
 // Initialize Stripe
 require('dotenv').config();
@@ -221,274 +242,356 @@ app.get('/mongo-key-exists', async (req, res) => {
 });
 
 // Endpoint for user authentication through S3
-app.post('/user-auth', async (req, res) => {
-    try {
-        const { data, from } = req.body;
-        let result;
-        let status;
-        let success;
-        let msg;
-        let s3Data;
+app.post('/user-auth',
+    optionalAuth,
+    validateRequiredFields(['data', 'from']),
+    async (req, res) => {
+        try {
+            const { data, from } = req.body;
+            let result;
+            let status;
+            let success;
+            let msg;
+            let dbData = {};
 
-        if (from === "login") {
-            result = await login(data.email, data.password);
+            if (from === "login") {
+                result = await login(data.email, data.password);
 
-            if (result === "wrong pass") {
-                status = 400;
-                success = false;
-                msg = "Incorrect Password";
-            }
-            else if (result === "not exist") {
-                status = 400;
-                success = false;
-                msg = "User does not exist";
-            }
-            else {
-                status = 200;
-                success = true;
-                msg = "Login Successful";
-                s3Data = result;
-            }
-        }
-
-        if (from === "register") {
-            result = await register(data.email, data);
-            if (result === "already exist") {
-                status = 400;
-                success = false;
-                msg = "User already exists";
-            }
-            else if (result === "success") {
-                status = 200;
-                success = true;
-                msg = "User registered successfully";
-
-                // Save trial subscription
-                let response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
-                if (!response.status) {
+                if (result === "wrong pass") {
                     status = 400;
                     success = false;
-                    msg = response.msg || "Failed to save trial subscription";
+                    msg = "Incorrect Password";
+                }
+                else if (result === "not exist") {
+                    status = 400;
+                    success = false;
+                    msg = "User does not exist";
+                }
+                else {
+                    status = 200;
+                    success = true;
+                    msg = "Login Successful";
+                    dbData = result;
+
+                    // Generate JWT token with email
+                    const token = generateToken(data.email);
+                    dbData.token = token;
                 }
             }
-            else {
-                status = 400;
-                success = false;
-                msg = "Something went wrong";
+
+            if (from === "register") {
+                result = await register(data.email, data);
+                if (result === "already exist") {
+                    status = 400;
+                    success = false;
+                    msg = "User already exists";
+                }
+                else if (result === "success") {
+                    status = 200;
+                    success = true;
+                    msg = "User registered successfully";
+
+                    // Save trial subscription
+                    let response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
+                    if (!response.status) {
+                        status = 400;
+                        success = false;
+                        msg = response.msg || "Failed to save trial subscription";
+                    }
+
+                    // Generate JWT token with email
+                    const token = generateToken(data.email);
+                    console.log(token)
+                    dbData.token = token;
+                }
+                else {
+                    status = 400;
+                    success = false;
+                    msg = "Something went wrong";
+                }
             }
+
+            // if (from === "updateBot") {
+            //     // Send email notification for bot update
+            //     status = 200;
+            //     success = true;
+            //     msg = "Bot updated successfully";
+            //     dbData = {};
+            //     const botUpdateEmailTemplate = botUpdateConfirmationEmail(data.fullName, data.botName, data.botDescription);
+            //     sendEmail(data.email, null, null, botUpdateEmailTemplate.subject, botUpdateEmailTemplate.body);
+            // }
+
+            return res.status(status).json({ success, msg, dbData });
         }
+        catch (err) {
+            console.log(err);
+            return res.status(400).json({ success: false, msg: "Something went wrong" });
+        }
+    });
 
-        if (from === "updatePass" || from === "updateProfile") {
-            result = await updateUserPassOrProfile(data.email, data);
+
+app.post('/update-profile',
+    authenticateToken,
+    validateRequiredFields(['data']),
+    async (req, res) => {
+        try {
+            const { data } = req.body;
+            const email = req.user.email; // Get email from JWT token
+
+            // Update user profile
+            let result = await updateUserPassOrProfile(email, data);
+
             if (result === "success") {
-                status = 200;
-                success = true;
-                msg = "User pass updated successfully";
-            }
-            else if (result === "not exist") {
-                status = 400;
-                success = false;
-                msg = "User does not exist";
-            }
-            else {
-                status = 400;
-                success = false;
-                msg = "Something went wrong";
-            }
-
-            if (from === "updateProfile") {
                 // Send email notification for profile update
                 const profileChangeEmailTemplate = profileUpdateConfirmationEmail(data.fullName);
-                sendEmail(data.email, null, null, profileChangeEmailTemplate.subject, profileChangeEmailTemplate.body);
-            }
+                sendEmail(email, null, null, profileChangeEmailTemplate.subject, profileChangeEmailTemplate.body);
 
-            if (from === "updatePass") {
+                return res.status(200).json({
+                    success: true,
+                    msg: "Profile updated successfully"
+                });
+            }
+            else if (result === "not exist") {
+                return res.status(400).json({
+                    success: false,
+                    msg: "User does not exist"
+                });
+            }
+            else {
+                return res.status(400).json({
+                    success: false,
+                    msg: "Something went wrong"
+                });
+            }
+        }
+        catch (err) {
+            console.log(err);
+            return res.status(500).json({ success: false, msg: "Something went wrong" });
+        }
+    });
+
+
+app.post('/update-password',
+    authenticateToken,
+    validateRequiredFields(['data']),
+    async (req, res) => {
+        try {
+            const { data } = req.body;
+            const email = req.user.email; // Get email from JWT token
+
+            // Update user password
+            let result = await updateUserPassOrProfile(email, data);
+
+            if (result === "success") {
                 // Send email notification for password change
                 const passChangeEmailTemplate = passwordChangeConfirmationEmail(data.fullName);
-                sendEmail(data.email, null, null, passChangeEmailTemplate.subject, passChangeEmailTemplate.body);
-            }
+                sendEmail(email, null, null, passChangeEmailTemplate.subject, passChangeEmailTemplate.body);
 
-            if (from === "updatePayment") {
-                // Send email notification for payment card update
-                const paymentMethodUpdateEmailTemplate = paymentMethodUpdateConfirmationEmail(data.fullName);
-                sendEmail(data.email, null, null, paymentMethodUpdateEmailTemplate.subject, paymentMethodUpdateEmailTemplate.body);
+                return res.status(200).json({
+                    success: true,
+                    msg: "Password updated successfully"
+                });
+            }
+            else if (result === "not exist") {
+                return res.status(400).json({
+                    success: false,
+                    msg: "User does not exist"
+                });
+            }
+            else {
+                return res.status(400).json({
+                    success: false,
+                    msg: "Something went wrong"
+                });
             }
         }
-
-        if (from === "updateBot") {
-            // Send email notification for bot update
-            status = 200;
-            success = true;
-            msg = "Bot updated successfully";
-            s3Data = {};
-            const botUpdateEmailTemplate = botUpdateConfirmationEmail(data.fullName, data.botName, data.botDescription);
-            sendEmail(data.email, null, null, botUpdateEmailTemplate.subject, botUpdateEmailTemplate.body);
+        catch (err) {
+            console.log(err);
+            return res.status(500).json({ success: false, msg: "Something went wrong" });
         }
+    });
 
-        return res.status(status).json({ success, msg, s3Data });
-    }
-    catch (err) {
-        console.log(err);
-        return res.status(400).json({ success: false, msg: "Something went wrong" });
-    }
-});
 
-app.post('/update-card-info', async (req, res) => {
-    const { email, customerId, paymentMethodId, data } = req.body;
+app.post('/update-card-info',
+    authenticateToken,
+    validateRequiredFields(['email', 'customerId', 'paymentMethodId', 'data']),
+    async (req, res) => {
+        const { email, customerId, paymentMethodId, data } = req.body;
 
-    try {
-        let result = await updateCard(email, customerId, paymentMethodId, data);
+        try {
+            let result = await updateCard(email, customerId, paymentMethodId, data);
 
-        if (result.success === true) {
-            return res.status(200).json({
-                success: true,
-                msg: 'Stripe customer created and payment method attached successfully'
+            if (result.success === true) {
+                return res.status(200).json({
+                    success: true,
+                    msg: 'Stripe customer created and payment method attached successfully'
+                });
+            }
+
+            return res.status(400).json({
+                success: false,
+                msg: result.msg || 'Failed to update user card details'
             });
+        } catch (error) {
+            console.error('Error creating Stripe customer:', error.message);
+            return res.status(500).json({ success: false, msg: error.message });
+        }
+    });
+
+
+app.post('/get-card-details',
+    authenticateToken,
+    validateRequiredFields(['paymentMethodId']),
+    async (req, res) => {
+        try {
+            const { paymentMethodId } = req.body;
+
+            const cardDetailsResponse = await getCardDetails(paymentMethodId);
+            if (!cardDetailsResponse.success) {
+                return res.status(400).json(cardDetailsResponse);
+            }
+
+            return res.status(200).json({ success: true, cardDetails: cardDetailsResponse.cardDetails });
+        } catch (error) {
+            console.error('Error retrieving card details:', error.message);
+            return res.status(500).json({ success: false, message: error.message });
+        }
+    });
+
+
+app.post('/send-email',
+    authenticateToken,
+    validateRequiredFields(['to', 'subject', 'content']),
+    async (req, res) => {
+        try {
+            const { to, cc, bcc, subject, content } = req.body;
+
+            let result = await sendEmail(to, cc, bcc, subject, content);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to send email' });
+            }
+            // Email sent successfully
+            return res.status(200).json({ status: true, message: 'Email sent successfully!' });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Failed to send email' });
+        }
+    });
+
+
+app.post('/save-subscription',
+    authenticateToken,
+    validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
+    async (req, res) => {
+        const { key, name, subscription, duration, amount } = req.body;
+        let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
+
+        if (!result.status) {
+            return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
         }
 
-        return res.status(400).json({
-            success: false,
-            msg: result.msg || 'Failed to update user card details'
-        });
-    } catch (error) {
-        console.error('Error creating Stripe customer:', error.message);
-        return res.status(500).json({ success: false, msg: error.message });
-    }
-});
+        res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
+    });
 
 
-app.post('/get-card-details', async (req, res) => {
-    try {
-        const { paymentMethodId } = req.body;
-        if (!paymentMethodId) {
-            return res.status(400).json({ success: false, message: 'Payment Method ID is required' });
+app.post('/nextsub-upgrade',
+    authenticateToken,
+    validateRequiredFields(['email', 'plan', 'duration', 'price']),
+    async (req, res) => {
+        try {
+            const { email, plan, duration, price, isDowngrade } = req.body;
+
+            let result = await nextSubUpgrade(email, plan, duration, price, isDowngrade);
+
+            if (result.success === true) {
+                return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+            }
+
+            return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
         }
+    });
 
-        const cardDetailsResponse = await getCardDetails(paymentMethodId);
-        if (!cardDetailsResponse.success) {
-            return res.status(400).json(cardDetailsResponse);
+
+app.post('/remove-nextsub',
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Get data from "xmati-users" bucket
+            let userData = await getDocument("xmati-users", `${email}`);
+
+            // Clear nextSubs if it exists
+            await clearNextSubs(email, userData);
+
+            return res.status(200).json({ status: true, message: 'Next subscription removed successfully' });
+        } catch (err) {
+            console.error('Error in remove-nextsub:', err);
+            return res.status(500).json({ status: false, message: 'Something went wrong while removing next subscription' });
         }
-
-        return res.status(200).json({ success: true, cardDetails: cardDetailsResponse.cardDetails });
-    } catch (error) {
-        console.error('Error retrieving card details:', error.message);
-        return res.status(500).json({ success: false, message: error.message });
-    }
-});
+    });
 
 
-app.post('/send-email', async (req, res) => {
-    try {
-        const { to, cc, bcc, subject, content } = req.body;
+app.post('/pro-suggestion-update',
+    authenticateToken,
+    validateRequiredFields(['email', 'plan', 'duration', 'price']),
+    async (req, res) => {
+        try {
+            const { email, plan, duration, price } = req.body;
 
-        let result = await sendEmail(to, cc, bcc, subject, content);
-        if (!result) {
-            return res.status(400).json({ status: false, error: 'Failed to send email' });
+            let result = await proSuggestionUpgrade(email, plan, duration, price);
+
+            if (result.success === true) {
+                return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+            }
+            return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
         }
-        // Email sent successfully
-        return res.status(200).json({ status: true, message: 'Email sent successfully!' });
-    } catch (error) {
-        return res.status(500).json({ status: false, error: error || 'Failed to send email' });
-    }
-});
+    });
 
 
-app.post('/save-subscription', async (req, res) => {
-    const { key, name, subscription, duration, amount } = req.body;
-    let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
+app.post('/get-subscription',
+    authenticateToken,
+    validateRequiredFields(['key']),
+    async (req, res) => {
+        try {
+            const { key } = req.body;
 
-    if (!result.status) {
-        return res.status(400).json({ status: false, msg: result.msg || 'Failed to save subscription data' });
-    }
+            let result = await getDocument("xmati-subscriber", `${key}`);
+            let data = result;
+            if (!result) {
+                return res.status(400).json({ status: false, msg: 'Failed to get user subscription' });
+            }
 
-    res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
-});
-
-
-app.post('/nextsub-upgrade', async (req, res) => {
-    try {
-        const { email, plan, duration, price, isDowngrade } = req.body;
-
-        let result = await nextSubUpgrade(email, plan, duration, price, isDowngrade);
-
-        if (result.success === true) {
-            return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+            return res.status(200).json({ status: true, msg: 'User Subscription received successfully', data });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
         }
-
-        return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
-    }
-});
+    });
 
 
-app.post('/remove-nextsub', async (req, res) => {
-    try {
-        const { email } = req.body;
+app.post('/set-maintenance',
+    authenticateToken,
+    validateRequiredFields(['status']),
+    async (req, res) => {
+        try {
+            const { status } = req.body;
 
-        // Get data from "xmati-users" bucket
-        let userData = await getDocument("xmati-users", `${email}`);
+            // Save the maintenance status to S3
+            await saveDocument("xmati-extra", "maintenance-status", JSON.stringify({ status }));
 
-        // Clear nextSubs if it exists
-        await clearNextSubs(email, userData);
-
-        return res.status(200).json({ status: true, message: 'Next subscription removed successfully' });
-    } catch (err) {
-        console.error('Error in remove-nextsub:', err);
-        return res.status(500).json({ status: false, message: 'Something went wrong while removing next subscription' });
-    }
-});
-
-
-app.post('/pro-suggestion-update', async (req, res) => {
-    try {
-        const { email, plan, duration, price } = req.body;
-
-        let result = await proSuggestionUpgrade(email, plan, duration, price);
-
-        if (result.success === true) {
-            return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
+            return res.status(200).json({ status: true, msg: 'Maintenance status updated successfully' });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while updating the maintenance status' });
         }
-        return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
-    }
-});
-
-
-app.post('/get-subscription', async (req, res) => {
-    try {
-        const { key } = req.body;
-
-        let result = await getDocument("xmati-subscriber", `${key}`);
-        let data = result;
-        if (!result) {
-            return res.status(400).json({ status: false, msg: 'Failed to get user subscription' });
-        }
-
-        return res.status(200).json({ status: true, msg: 'User Subscription received successfully', data });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
-    }
-});
-
-
-app.post('/set-maintenance', async (req, res) => {
-    try {
-        const { status } = req.body;
-
-        // Save the maintenance status to S3
-        await saveDocument("xmati-extra", "maintenance-status", JSON.stringify({ status }));
-
-        return res.status(200).json({ status: true, msg: 'Maintenance status updated successfully' });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, msg: 'Something went wrong while updating the maintenance status' });
-    }
-});
+    });
 
 
 app.get('/get-maintenance', async (req, res) => {
@@ -503,7 +606,7 @@ app.get('/get-maintenance', async (req, res) => {
 });
 
 
-app.get('/get-all-users-subscriptions', async (req, res) => {
+app.get('/get-all-users-subscriptions', authenticateToken, async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
         const userKeys = await getFromMongoByPrefix('xmati-users', '');
@@ -571,38 +674,44 @@ app.get('/get-all-users-subscriptions', async (req, res) => {
 });
 
 
-app.post('/save-bot', async (req, res) => {
-    try {
-        const { fullName, organizationName, key, data, from } = req.body;
+app.post('/save-bot',
+    optionalAuth,
+    validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
+    async (req, res) => {
+        try {
+            const { fullName, organizationName, key, data, from } = req.body;
 
-        var result = await saveBot(fullName, organizationName, key, data, from);
-        if (!result) {
-            return res.status(400).json({ status: false, error: 'Failed to save bot' });
+            var result = await saveBot(fullName, organizationName, key, data, from);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to save bot' });
+            }
+            return res.status(200).json({ status: true, message: 'Bot saved successfully' });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
         }
-        return res.status(200).json({ status: true, message: 'Bot saved successfully' });
-    } catch (error) {
-        return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
-    }
-});
+    });
 
 
-app.post('/get-bots', async (req, res) => {
-    try {
-        const { email } = req.body;
+app.post('/get-bots',
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
 
-        let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
-        if (!result) {
-            return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
         }
-
-        return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
-    } catch (error) {
-        return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
-    }
-});
+    });
 
 
-app.get('/get-all-bots', async (req, res) => {
+app.get('/get-all-bots', optionalAuth, async (req, res) => {
     try {
 
         let result = await getFromMongoByPrefix("xmatibots", '');
@@ -617,64 +726,74 @@ app.get('/get-all-bots', async (req, res) => {
 });
 
 
-app.post('/delete-bot', async (req, res) => {
-    try {
-        const { fullName, key } = req.body;
+app.post('/delete-bot',
+    optionalAuth,
+    validateRequiredFields(['fullName', 'key']),
+    async (req, res) => {
+        try {
+            const { fullName, key } = req.body;
 
-        let result = await deleteBot(fullName, key);
-        if (!result) {
-            return res.status(400).json({ status: false, error: 'Failed to delete bot' });
+            let result = await deleteBot(fullName, key);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to delete bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
         }
-
-        return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
-    } catch (error) {
-        return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
-    }
-});
+    });
 
 
-app.post('/check-user', async (req, res) => {
-    try {
-        const { email, from } = req.body;
+app.post('/check-user',
+    validateRequiredFields(['email', 'from']),
+    async (req, res) => {
+        try {
+            const { email, from } = req.body;
 
-        let result = await checkUser(email, from);
+            let result = await checkUser(email, from);
 
-        if (result.status) {
-            return res.status(200).json({ status: true, message: 'User exists', otp: result.otp });
-        } else {
-            return res.status(400).json({ status: false, message: 'No User' });
+            if (result.status) {
+                return res.status(200).json({ status: true, message: 'User exists', otp: result.otp });
+            } else {
+                return res.status(400).json({ status: false, message: 'No User' });
+            }
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
         }
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
-    }
-});
+    });
 
 
-app.post('/send-email-otp', async (req, res) => {
-    const { fullName, email, otp } = req.body;
+app.post('/send-email-otp',
+    validateRequiredFields(['fullName', 'email', 'otp']),
+    async (req, res) => {
+        const { fullName, email, otp } = req.body;
 
-    const emailTemplate = registrationEmailVerificationOtpEmail(fullName, otp);
-    await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
-    res.status(200).json({ status: true, message: 'OTP email sent successfully' });
-});
+        const emailTemplate = registrationEmailVerificationOtpEmail(fullName, otp);
+        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
+        res.status(200).json({ status: true, message: 'OTP email sent successfully' });
+    });
 
 
-app.post('/forgot-pass', async (req, res) => {
-    try {
-        const { email, password } = req.body;
+app.post('/forgot-pass',
+    optionalAuth,
+    validateRequiredFields(['email', 'password']),
+    async (req, res) => {
+        try {
+            const { email, password } = req.body;
 
-        let result = await forgotPass(email, password);
-        if (!result) {
-            return res.status(400).json({ status: false, msg: 'Failed to update password' });
+            let result = await forgotPass(email, password);
+            if (!result) {
+                return res.status(400).json({ status: false, msg: 'Failed to update password' });
+            }
+
+            return res.status(200).json({ status: true, msg: 'Password updated successfully' });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).send('Something went wrong while updating the password');
         }
-
-        return res.status(200).json({ status: true, msg: 'Password updated successfully' });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).send('Something went wrong while updating the password');
-    }
-});
+    });
 
 
 // app.post('/gemini-llm', async (req, res) => {
@@ -784,90 +903,97 @@ app.post('/forgot-pass', async (req, res) => {
 
 
 
-app.post('/attach-payment-method', async (req, res) => {
-    const { email, paymentMethodId, customerId } = req.body;
+app.post('/attach-payment-method',
+    validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
+    async (req, res) => {
+        const { email, paymentMethodId, customerId } = req.body;
 
-    try {
-        // Get or create a Stripe customer
-        let customer = null;
-        if (customerId === '') {
-            customer = await getOrCreateCustomerByEmail(email);
-        } else {
-            customer = customerId;
+        try {
+            // Get or create a Stripe customer
+            let customer = null;
+            if (customerId === '') {
+                customer = await getOrCreateCustomerByEmail(email);
+            } else {
+                customer = customerId;
+            }
+
+
+            if (!customer) {
+                return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
+            }
+
+            if (paymentMethodId == '') {
+                return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
+            }
+
+            // Attach the payment method to the customer
+            await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
+
+            // Set the payment method as the default for the customer
+            await stripe.customers.update(customer.id, {
+                invoice_settings: { default_payment_method: paymentMethodId },
+            });
+
+            return res.status(200).json({
+                success: true,
+                msg: 'Stripe customer created and payment method attached successfully',
+                customerId: customer.id,
+                paymentMethodId: paymentMethodId,
+            });
+        } catch (error) {
+            console.error('Error with stripe:', error.message);
+            return res.status(500).json({ success: false, msg: error.message });
         }
+    });
 
 
-        if (!customer) {
-            return res.status(400).json({ success: false, msg: 'Failed to create or retrieve customer' });
+app.post('/create-setup-intent',
+    validateRequiredFields(['email', 'customerId']),
+    async (req, res) => {
+        const { email, customerId } = req.body;
+
+        try {
+            let customer = null;
+            if (customerId === '-') {
+                customer = await getOrCreateCustomerByEmail(email);
+            } else {
+                customer = customerId;
+            }
+
+            const setupIntent = await stripe.setupIntents.create({
+                customer: customer.id,
+                usage: 'off_session',
+            });
+
+            res.json({ clientSecret: setupIntent.client_secret, customerId: customer.id });
+        } catch (err) {
+            console.error('Error creating SetupIntent:', err.message);
+            res.status(500).json({ error: err.message });
         }
+    });
 
-        if (paymentMethodId == '') {
-            return res.status(400).json({ success: false, msg: 'Invalid payment method id' });
+
+app.post('/create-payment-intent',
+    authenticateToken,
+    validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
+    async (req, res) => {
+        try {
+            const { amount, currency, customerId, paymentMethodId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
+
+            let response = await createPaymentIntent(amount, currency, customerId, paymentMethodId, email, subscription, duration);
+            if (!response.success) {
+                return res.status(400).send('something went wrong while getting payement intent')
+            }
+
+            return res.status(200).json({
+                client_secret: response.data,
+                card_data: response.card.cardDetails,
+            });
         }
-
-        // Attach the payment method to the customer
-        await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
-
-        // Set the payment method as the default for the customer
-        await stripe.customers.update(customer.id, {
-            invoice_settings: { default_payment_method: paymentMethodId },
-        });
-
-        return res.status(200).json({
-            success: true,
-            msg: 'Stripe customer created and payment method attached successfully',
-            customerId: customer.id,
-            paymentMethodId: paymentMethodId,
-        });
-    } catch (error) {
-        console.error('Error with stripe:', error.message);
-        return res.status(500).json({ success: false, msg: error.message });
-    }
-});
-
-
-app.post('/create-setup-intent', async (req, res) => {
-    const { email, customerId } = req.body;
-
-    try {
-        let customer = null;
-        if (customerId === '') {
-            customer = await getOrCreateCustomerByEmail(email);
-        } else {
-            customer = customerId;
+        catch (err) {
+            return res.status(400).send('something went wrong' + err.message);
         }
-
-        const setupIntent = await stripe.setupIntents.create({
-            customer: customer.id,
-            usage: 'off_session',
-        });
-
-        res.json({ clientSecret: setupIntent.client_secret, customerId: customer.id });
-    } catch (err) {
-        console.error('Error creating SetupIntent:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-
-app.post('/create-payment-intent', async (req, res) => {
-    try {
-        const { amount, currency, customerId, paymentMethodId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
-
-        let response = await createPaymentIntent(amount, currency, customerId, paymentMethodId, email, subscription, duration);
-        if (!response.success) {
-            return res.status(400).send('something went wrong while getting payement intent')
-        }
-
-        return res.status(200).json({
-            client_secret: response.data,
-            card_data: response.card.cardDetails,
-        });
-    }
-    catch (err) {
-        return res.status(400).send('something went wrong' + err.message);
-    }
-});
+    });
 //     try {
 //         const { clientSecret, cardDetails, subscription, duration, amount } = req.body;
 //         let response = await makePayment(clientSecret, cardDetails, subscription, duration);
@@ -931,56 +1057,65 @@ app.post('/create-payment-intent', async (req, res) => {
 // });
 
 
-app.post('/refund-amount', async (req, res) => {
-    const { chargeId, reason, amount } = req.body;
+app.post('/refund-amount',
+    authenticateToken,
+    validateRequiredFields(['chargeId', 'reason', 'amount']),
+    async (req, res) => {
+        const { chargeId, reason, amount } = req.body;
 
-    try {
-        const refundSuccess = await refundCharge(chargeId, reason, amount);
-        if (!refundSuccess) {
-            return res.status(400).json({ success: false, error: 'Failed to process refund' });
+        try {
+            const refundSuccess = await refundCharge(chargeId, reason, amount);
+            if (!refundSuccess) {
+                return res.status(400).json({ success: false, error: 'Failed to process refund' });
+            }
+            return res.status(200).json({ success: true, message: 'Refund processed successfully' });
+        } catch (error) {
+            console.error('Error processing refund:', error);
+            return res.status(500).json({ success: false, error: 'Internal server error' });
         }
-        return res.status(200).json({ success: true, message: 'Refund processed successfully' });
-    } catch (error) {
-        console.error('Error processing refund:', error);
-        return res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
+    });
 
 
-app.post('/failed-payment', async (req, res) => {
-    try {
-        const { email, name, subscription, amount } = req.body;
+app.post('/failed-payment',
+    authenticateToken,
+    validateRequiredFields(['email', 'name', 'subscription', 'amount']),
+    async (req, res) => {
+        try {
+            const { email, name, subscription, amount } = req.body;
 
-        // Prepare the email content
-        const failedPaymentEmailTemplate = paymentFailedEmail(name, subscription, amount);
+            // Prepare the email content
+            const failedPaymentEmailTemplate = paymentFailedEmail(name, subscription, amount);
 
-        // Send the email
-        await sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
+            // Send the email
+            await sendEmail(email, null, null, failedPaymentEmailTemplate.subject, failedPaymentEmailTemplate.body);
 
-        return res.status(200).json({ status: true, msg: 'Failed payment email sent successfully' });
-    }
-    catch (error) {
-        console.log(error);
-        return res.status(500).json({ status: false, msg: 'Something went wrong while processing the failed payment email' });
-    }
-});
-
-
-app.post('/get-stripe-transactions', async (req, res) => {
-    const { email } = req.body
-
-    try {
-        const transactionData = await getStripeTransaction(email);
-        if (!transactionData.status) {
-            return res.status(404).json({ error: transactionData.error });
+            return res.status(200).json({ status: true, msg: 'Failed payment email sent successfully' });
         }
+        catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while processing the failed payment email' });
+        }
+    });
 
-        return res.status(200).json({ charges: transactionData.charges });
-    } catch (err) {
-        console.error(err);
-        return res.status(400).json({ error: 'Failed to retrieve transactions' });
-    }
-})
+
+app.post('/get-stripe-transactions',
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body
+
+        try {
+            const transactionData = await getStripeTransaction(email);
+            if (!transactionData.status) {
+                return res.status(404).json({ error: transactionData.error });
+            }
+
+            return res.status(200).json({ charges: transactionData.charges });
+        } catch (err) {
+            console.error(err);
+            return res.status(400).json({ error: 'Failed to retrieve transactions' });
+        }
+    })
 
 
 // function formatToISODate(date) {
@@ -1096,61 +1231,70 @@ app.post('/get-stripe-transactions', async (req, res) => {
 // Example usage in the refund API
 
 
-app.post('/trial-cancellation', async (req, res) => {
-    try {
-        const { email } = req.body;
+app.post('/trial-cancellation',
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
 
-        let result = await trialCancellation(email);
-        if (!result) {
-            return res.status(400).json({ success: false, message: 'Failed to cancel after trial subscription' });
+            let result = await trialCancellation(email);
+            if (!result) {
+                return res.status(400).json({ success: false, message: 'Failed to cancel after trial subscription' });
+            }
+
+            return res.status(200).json({ success: true, message: 'After Trial subscription cancelled successfully' });
+        } catch (err) {
+            res.status(500).json({ success: false, message: 'Something went wrong', error: err.message });
         }
-
-        return res.status(200).json({ success: true, message: 'After Trial subscription cancelled successfully' });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'Something went wrong', error: err.message });
-    }
-});
+    });
 
 
-app.post('/downgrade-subscription', async (req, res) => {
-    try {
-        const { email, fullName, currentSub, daysRemaining, amount } = req.body;
+app.post('/downgrade-subscription',
+    authenticateToken,
+    validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
+    async (req, res) => {
+        try {
+            const { email, fullName, currentSub, daysRemaining, amount } = req.body;
 
-        let response = await SaveSubscription(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
-        if (!response.status) {
-            console.log('Failed to save subscription data:', response.msg);
-            return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
+            let response = await SaveSubscription(email, fullName, currentSub, 'custom', daysRemaining, amount, false);
+            if (!response.status) {
+                console.log('Failed to save subscription data:', response.msg);
+                return res.status(400).json({ success: false, message: response.msg || 'Failed to save subscription data' });
+            }
+
+            return res.status(200).json({ success: true, message: 'Subscription downgraded successfully' });
+        } catch (err) {
+            console.error('Downgrading issue:', err.message);
+            res.status(500).json({ success: false, message: err.message });
         }
-
-        return res.status(200).json({ success: true, message: 'Subscription downgraded successfully' });
-    } catch (err) {
-        console.error('Downgrading issue:', err.message);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
+    });
 
 
-app.post('/cancel-subscription', async (req, res) => {
-    try {
-        const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
+app.post('/cancel-subscription',
+    authenticateToken,
+    validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
+    async (req, res) => {
+        try {
+            const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
 
-        let result = await cancelSubscription(chargeId, reason, email, fullName, subscription, amount, refundDetails);
-        if (!result) {
-            return res.status(400).json({ success: false, message: 'Failed to cancel subscription' });
+            let result = await cancelSubscription(chargeId, reason, email, fullName, subscription, amount, refundDetails);
+            if (!result) {
+                return res.status(400).json({ success: false, message: 'Failed to cancel subscription' });
+            }
+
+            return res.status(200).json({
+                success: true,
+                refundDetails
+            });
+        } catch (err) {
+            console.error('Cancellation error:', err.message);
+            res.status(500).json({ success: false, message: err.message });
         }
-
-        return res.status(200).json({
-            success: true,
-            refundDetails
-        });
-    } catch (err) {
-        console.error('Cancellation error:', err.message);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
+    });
 
 
-app.post('/download-csv', (req, res) => {
+app.post('/download-csv', authenticateToken, (req, res) => {
     try {
         const { data, email } = req.body;
 
@@ -1198,6 +1342,9 @@ cron.schedule('55 23 * * *', async () => {
         console.error('Error executing cron job:', error.message);
     }
 }, { timezone: 'America/Los_Angeles' });
+
+// Error handling middleware (should be last)
+app.use(errorHandler);
 
 // Specify the port and start the server
 const PORT = 8000;
