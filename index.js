@@ -4,7 +4,7 @@ const cron = require('node-cron');
 const { login, register, updateUserPassOrProfile } = require('./src/authentication/user-auth/auth');
 const { sendEmail } = require('./utils/send-email');
 const { sendExpiryEmail } = require('./src/cron-functions/send-expiry-email');
-const { autoRenewSubscriptions } = require('./src/cron-functions/auto-sub-renewal');
+const { autoRenewSubscription } = require('./src/cron-functions/auto-sub-renewal');
 const { forgotPass } = require('./src/authentication/forgot-pass');
 // const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromS3, keyExists } = require('./utils/s3-service');
 const { getMaintenance } = require('./src/maintenance');
@@ -17,6 +17,8 @@ const { cancelSubscription } = require('./src/subscription-services/cancel-subs'
 const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
 const { saveBot } = require('./src/bot-services/save-bot');
 const { deleteBot } = require('./src/bot-services/delete-bot');
+const { submitEnquiry } = require('./src/enquiry/submit-enquiry');
+const { getEnquiry } = require('./src/enquiry/get-enquiry');
 const {
     paymentFailedEmail,
     profileUpdateConfirmationEmail,
@@ -556,7 +558,7 @@ app.post('/pro-suggestion-update',
 
 
 app.post('/get-subscription',
-    authenticateToken,
+    optionalAuth,
     validateRequiredFields(['key']),
     async (req, res) => {
         try {
@@ -572,6 +574,65 @@ app.post('/get-subscription',
         } catch (error) {
             console.log(error);
             return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
+        }
+    });
+
+
+app.post('/submit-enquiry',
+    authenticateToken,
+    validateRequiredFields(['email', 'enquiry']),
+    async (req, res) => {
+         const { email, enquiry } = req.body;
+
+        try {
+            let result = await submitEnquiry(email, enquiry);
+
+            if (!result) {
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Failed to submit enquiry'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                msg: 'Enquiry submitted successfully',
+            });
+        } catch (error) {
+            console.error('Error submitting enquiry:', error);
+            return res.status(500).json({
+                success: false,
+                msg: 'Something went wrong while submitting the enquiry'
+            });
+        }
+    });
+
+
+app.get('/get-enquiries',
+    authenticateToken,
+    async (req, res) => {
+        try {
+          
+            let result = await getEnquiry();
+
+            if(result === false){
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Failed to retrieve enquiries'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                msg: 'Enquiries retrieved successfully',
+                data: result,
+            });
+        } catch (error) {
+            console.error('Error retrieving enquiries:', error);
+            return res.status(500).json({
+                success: false,
+                msg: 'Something went wrong while retrieving enquiries'
+            });
         }
     });
 
@@ -994,6 +1055,7 @@ app.post('/create-payment-intent',
             return res.status(400).send('something went wrong' + err.message);
         }
     });
+
 //     try {
 //         const { clientSecret, cardDetails, subscription, duration, amount } = req.body;
 //         let response = await makePayment(clientSecret, cardDetails, subscription, duration);
@@ -1320,10 +1382,7 @@ app.post('/download-csv', authenticateToken, (req, res) => {
 //     });
 // }
 
-
 //cron job to send expiry email every day at 10:00 PM
-
-
 cron.schedule('25 18 * * *', async () => {
     try {
         await sendExpiryEmail();
@@ -1336,15 +1395,17 @@ cron.schedule('25 18 * * *', async () => {
 // cron job to auto-renew subscriptions every day at 11:55 PM
 cron.schedule('55 23 * * *', async () => {
     try {
-        await autoRenewSubscriptions();
+        await autoRenewSubscription();
         console.log('Cron job executed successfully:');
     } catch (error) {
         console.error('Error executing cron job:', error.message);
     }
 }, { timezone: 'America/Los_Angeles' });
 
+
 // Error handling middleware (should be last)
 app.use(errorHandler);
+
 
 // Specify the port and start the server
 const PORT = 8000;

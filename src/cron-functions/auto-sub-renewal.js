@@ -151,5 +151,5 @@ async function autoRenewSubscription() {
         return { status: false, message: 'Something went wrong', error: error.message };
     }
 }
-    
-module.exports = autoRenewSubscription;
+
+module.exports = { autoRenewSubscription };
