@@ -25,9 +25,9 @@ async function SaveSubscription(key, name, subscription, duration, rdays = 0, am
             if (duration === 'monthly') {
                 newDate = new Date(new Date().setMonth(currentDate.getMonth() + 1));
             }
-            else if (duration === 'half-yearly') {
-                newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
-            }
+            // else if (duration === 'half-yearly') {
+            //     newDate = new Date(new Date().setMonth(currentDate.getMonth() + 6));
+            // }
             else if (duration === 'yearly') {
                 newDate = new Date(new Date().setFullYear(currentDate.getFullYear() + 1));
             }

@@ -282,6 +282,8 @@ app.post('/user-auth',
             }
 
             if (from === "register") {
+                const nextSubsData = data.nextSubs;
+                
                 result = await register(data.email, data);
                 if (result === "already exist") {
                     status = 400;
@@ -293,18 +295,25 @@ app.post('/user-auth',
                     success = true;
                     msg = "User registered successfully";
 
-                    // Save trial subscription
-                    let response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
+                    // Save subscription details
+                    let response;
+                    if (nextSubsData.plan !== 'Starter') {
+                        response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
+                    } else {
+                        response = await SaveSubscription(data.email, data.fullName, nextSubsData.plan, nextSubsData.duration, 0, nextSubsData.price, false);
+                    }
+
                     if (!response.status) {
                         status = 400;
                         success = false;
-                        msg = response.msg || "Failed to save trial subscription";
+                        msg = response.msg || "Failed to save subscription details";
                     }
 
-                    // Generate JWT token with email
-                    const token = generateToken(data.email);
-                    console.log(token)
-                    dbData.token = token;
+                    if (response.status) {
+                        // Generate JWT token with email
+                        const token = generateToken(data.email);
+                        dbData.token = token;
+                    }
                 }
                 else {
                     status = 400;
@@ -582,7 +591,7 @@ app.post('/submit-enquiry',
     authenticateToken,
     validateRequiredFields(['email', 'enquiry']),
     async (req, res) => {
-         const { email, enquiry } = req.body;
+        const { email, enquiry } = req.body;
 
         try {
             let result = await submitEnquiry(email, enquiry);
@@ -612,10 +621,10 @@ app.get('/get-enquiries',
     authenticateToken,
     async (req, res) => {
         try {
-          
+
             let result = await getEnquiry();
 
-            if(result === false){
+            if (result === false) {
                 return res.status(400).json({
                     success: false,
                     msg: 'Failed to retrieve enquiries'
@@ -1035,7 +1044,7 @@ app.post('/create-setup-intent',
 
 
 app.post('/create-payment-intent',
-    authenticateToken,
+    optionalAuth,
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
     async (req, res) => {
         try {

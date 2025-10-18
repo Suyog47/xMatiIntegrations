@@ -20,6 +20,12 @@ async function register(email, data) {
     if (await checkUser(email)) {
         return "already exist";
     } else {
+        // If selectedPlan is 'Starter', remove nextSubs key from data 
+        // because we don't need to include it for Starter plans
+        if (data.nextSubs && data.nextSubs.plan === 'Starter') {
+            delete data.nextSubs;
+        }
+
         let stats = await setUser(email, data);
         if (stats) {
             return "success";

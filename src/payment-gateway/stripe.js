@@ -126,7 +126,7 @@ async function refundCharge(chargeId, reason, amount) {
               await stripe.refunds.create({
                   charge: chargeId,
                   amount: Math.round(numericAmount * 100), // Stripe expects the amount in cents
-                  reason: reason || 'requested_by_customer',
+                  reason: reason === '-' ? 'requested_by_customer' : reason,
               });
           }
 
