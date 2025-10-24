@@ -24,6 +24,7 @@ const {
     profileUpdateConfirmationEmail,
     passwordChangeConfirmationEmail,
     registrationEmailVerificationOtpEmail,
+    registrationRollbackEmail,
 } = require('./templates/email_template');
 const { downloadCSV } = require('./src/csv-download');
 const cors = require("cors");
@@ -283,7 +284,7 @@ app.post('/user-auth',
 
             if (from === "register") {
                 const nextSubsData = data.nextSubs;
-                
+
                 result = await register(data.email, data);
                 if (result === "already exist") {
                     status = 400;
@@ -1380,6 +1381,62 @@ app.post('/download-csv', authenticateToken, (req, res) => {
         res.status(500).send('Failed to generate CSV');
     }
 });
+
+
+app.post('/rollback-registration',
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Delete user data from xmati-users collection
+            const userDeleteResult = await deleteFromMongo("xmati-users", email);
+            
+            // Delete subscription data from xmati-subscriber collection
+            const subscriptionDeleteResult = await deleteFromMongo("xmati-subscriber", email);
+
+            // Check if any data was deleted (successful rollback)
+            if (userDeleteResult || subscriptionDeleteResult) {
+                // Send email notification about registration revocation using template
+                try {
+                    const emailTemplate = registrationRollbackEmail(email);
+                    await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
+                    console.log(`Rollback notification email sent to: ${email}`);
+                } catch (emailError) {
+                    console.error('Failed to send rollback notification email:', emailError);
+                    // Don't fail the entire operation if email fails
+                }
+
+                // Determine response message based on what was deleted
+                let message = 'User registration rolled back successfully.';
+                if (userDeleteResult && subscriptionDeleteResult) {
+                    message = 'User registration rolled back successfully. Data deleted from both collections. Notification email sent.';
+                } else if (userDeleteResult && !subscriptionDeleteResult) {
+                    message = 'User data deleted from xmati-users. No subscription data found to delete. Notification email sent.';
+                } else if (!userDeleteResult && subscriptionDeleteResult) {
+                    message = 'Subscription data deleted from xmati-subscriber. No user data found to delete. Notification email sent.';
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    message: message
+                });
+            } else {
+                return res.status(200).json({
+                    success: true,
+                    message: 'No user data found in either collection for the provided email.'
+                });
+            }
+        } catch (error) {
+            console.error('Error during rollback registration:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while rolling back registration',
+                error: error.message
+            });
+        }
+    });
 
 
 // function streamToString(stream) {

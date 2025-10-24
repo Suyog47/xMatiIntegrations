@@ -406,6 +406,59 @@ function registrationEmailVerificationOtpEmail(fullName, otpCode) {
     };
 }
 
+function registrationRollbackEmail(email) {
+    return {
+        subject: "Registration Revoked - Payment Processing Failed",
+        body: `
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                    <h2 style="color: #d32f2f; text-align: center;">Registration Revoked</h2>
+                    
+                    <p>Dear ${email},</p>
+                    
+                    <p>We regret to inform you that your registration with <strong>xMati.ai</strong> has been revoked due to payment processing issues.</p>
+                    
+                    <div style="background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 5px; padding: 15px; margin: 20px 0;">
+                        <h3 style="color: #856404; margin-top: 0;">What happened?</h3>
+                        <p style="margin-bottom: 0; color: #856404;">There was an issue processing your payment, which resulted in the automatic cancellation and rollback of your account registration.</p>
+                    </div>
+                    
+                    <h3 style="color: #333;">Account Status:</h3>
+                    <ul>
+                        <li>Your account data has been removed from our system</li>
+                        <li>Any subscription information has been deleted</li>
+                        <li>No charges have been processed</li>
+                    </ul>
+                    
+                    <div style="background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px; padding: 15px; margin: 20px 0;">
+                        <h3 style="color: #0c5460; margin-top: 0;">Next Steps:</h3>
+                        <p style="color: #0c5460; margin-bottom: 0;">
+                            If you would like to try registering again, please:
+                            <br>• Visit our website at <a href="https://app.xmati.ai" style="color: #007bff;">app.xmati.ai</a>
+                            <br>• Ensure your payment information is correct
+                            <br>• Contact our support team if you continue experiencing issues
+                        </p>
+                    </div>
+                    
+                    <p>If you believe this is an error or need assistance, please don't hesitate to contact our support team.</p>
+                    
+                    <p style="margin-top: 30px;">
+                        Best regards,<br>
+                        <strong>The xMati.ai Team</strong>
+                    </p>
+                    
+                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+                    <p style="font-size: 12px; color: #666; text-align: center;">
+                        This is an automated notification. Please do not reply to this email.
+                    </p>
+                </div>
+            </body>
+        </html>
+        `
+    };
+}
+
 module.exports = {
     welcomeSubscription,
     paymentReceiptEmail,
@@ -423,5 +476,6 @@ module.exports = {
     trialNextsubUpgradeEmail,
     proSuggestionUpdateEmail,
     registrationEmailVerificationOtpEmail,
-    botUpdateConfirmationEmail
+    botUpdateConfirmationEmail,
+    registrationRollbackEmail
 };
