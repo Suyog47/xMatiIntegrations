@@ -35,6 +35,7 @@ const { trialCancellation } = require('./src/subscription-services/trial-cancel'
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
 const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
 const { disableTimeout, errorHandler, validateRequiredFields } = require('./src/middleware/common');
+const { versionValidation } = require('./src/middleware/version-validation');
 const { getVersions } = require('./src/version/get-version');
 
 require('dotenv').config();
@@ -91,6 +92,10 @@ app.get('/', (req, res) => {
     res.send('Hello, Express!');
 });
 
+// sample post - with version validation
+app.post('/', versionValidation, (req, res) => {
+    res.send('Hello, Express! Version validated successfully.');
+});
 
 // // Endpoint to create a Lex bot
 // app.post('/lexbot', async (req, res) => {
@@ -217,28 +222,28 @@ app.get('/', (req, res) => {
 
 
 
-app.post('/mongo-save', async (req, res) => {
+app.post('/mongo-save', versionValidation, async (req, res) => {
     const saveRes = await saveDocument("xmati-users", "user123", { name: "Alice", plan: "premium" });
     console.log("saveRes:", saveRes);
 
     res.status(200).json({ status: "ok", saveRes });
 });
 
-app.get('/mongo-get', async (req, res) => {
+app.get('/mongo-get', versionValidation, async (req, res) => {
     const getRes = await getDocument("xmati-users", "user123");
     console.log("retrieved doc:", getRes);
 
     res.status(200).json({ status: "ok", getRes });
 });
 
-app.get('/mongo-delete', async (req, res) => {
+app.get('/mongo-delete', versionValidation, async (req, res) => {
     const deleteRes = await deleteFromMongo("xmati-users", "user123");
     console.log("deleteRes:", deleteRes);
 
     res.status(200).json({ status: "ok", deleteRes });
 });
 
-app.get('/mongo-key-exists', async (req, res) => {
+app.get('/mongo-key-exists', versionValidation, async (req, res) => {
     const keyExistsRes = await mongoKeyExists("xmati-users", "user123");
     console.log("keyExistsRes:", keyExistsRes);
 
@@ -247,6 +252,7 @@ app.get('/mongo-key-exists', async (req, res) => {
 
 // Endpoint for user authentication through S3
 app.post('/user-auth',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['data', 'from']),
     async (req, res) => {
@@ -344,6 +350,7 @@ app.post('/user-auth',
 
 
 app.post('/update-profile',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['data']),
     async (req, res) => {
@@ -385,6 +392,7 @@ app.post('/update-profile',
 
 
 app.post('/update-password',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['data']),
     async (req, res) => {
@@ -426,6 +434,7 @@ app.post('/update-password',
 
 
 app.post('/update-card-info',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'customerId', 'paymentMethodId', 'data']),
     async (req, res) => {
@@ -453,6 +462,7 @@ app.post('/update-card-info',
 
 
 app.post('/get-card-details',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['paymentMethodId']),
     async (req, res) => {
@@ -473,6 +483,7 @@ app.post('/get-card-details',
 
 
 app.post('/send-email',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['to', 'subject', 'content']),
     async (req, res) => {
@@ -492,6 +503,7 @@ app.post('/send-email',
 
 
 app.post('/save-subscription',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
     async (req, res) => {
@@ -507,6 +519,7 @@ app.post('/save-subscription',
 
 
 app.post('/nextsub-upgrade',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
     async (req, res) => {
@@ -528,6 +541,7 @@ app.post('/nextsub-upgrade',
 
 
 app.post('/remove-nextsub',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email']),
     async (req, res) => {
@@ -549,6 +563,7 @@ app.post('/remove-nextsub',
 
 
 app.post('/pro-suggestion-update',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
     async (req, res) => {
@@ -569,6 +584,7 @@ app.post('/pro-suggestion-update',
 
 
 app.post('/get-subscription',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['key']),
     async (req, res) => {
@@ -590,6 +606,7 @@ app.post('/get-subscription',
 
 
 app.post('/submit-enquiry',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'enquiry']),
     async (req, res) => {
@@ -620,6 +637,7 @@ app.post('/submit-enquiry',
 
 
 app.get('/get-enquiries',
+    versionValidation,
     authenticateToken,
     async (req, res) => {
         try {
@@ -649,6 +667,7 @@ app.get('/get-enquiries',
 
 
 app.post('/set-maintenance',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['status']),
     async (req, res) => {
@@ -666,7 +685,7 @@ app.post('/set-maintenance',
     });
 
 
-app.get('/get-maintenance', async (req, res) => {
+app.get('/get-maintenance', versionValidation, async (req, res) => {
     let data = await getMaintenance();
 
     if (data.status) {
@@ -678,7 +697,7 @@ app.get('/get-maintenance', async (req, res) => {
 });
 
 
-app.get('/get-all-users-subscriptions', authenticateToken, async (req, res) => {
+app.get('/get-all-users-subscriptions', versionValidation, authenticateToken, async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
         const userKeys = await getFromMongoByPrefix('xmati-users', '');
@@ -747,6 +766,7 @@ app.get('/get-all-users-subscriptions', authenticateToken, async (req, res) => {
 
 
 app.post('/save-bot',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
     async (req, res) => {
@@ -765,6 +785,7 @@ app.post('/save-bot',
 
 
 app.post('/get-bots',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
@@ -783,7 +804,7 @@ app.post('/get-bots',
     });
 
 
-app.get('/get-all-bots', optionalAuth, async (req, res) => {
+app.get('/get-all-bots', versionValidation, optionalAuth, async (req, res) => {
     try {
 
         let result = await getFromMongoByPrefix("xmatibots", '');
@@ -799,6 +820,7 @@ app.get('/get-all-bots', optionalAuth, async (req, res) => {
 
 
 app.post('/delete-bot',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['fullName', 'key']),
     async (req, res) => {
@@ -818,6 +840,7 @@ app.post('/delete-bot',
 
 
 app.post('/check-user',
+    versionValidation,
     validateRequiredFields(['email', 'from']),
     async (req, res) => {
         try {
@@ -838,6 +861,7 @@ app.post('/check-user',
 
 
 app.post('/send-email-otp',
+    versionValidation,
     validateRequiredFields(['fullName', 'email', 'otp']),
     async (req, res) => {
         const { fullName, email, otp } = req.body;
@@ -849,6 +873,7 @@ app.post('/send-email-otp',
 
 
 app.post('/forgot-pass',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['email', 'password']),
     async (req, res) => {
@@ -976,6 +1001,7 @@ app.post('/forgot-pass',
 
 
 app.post('/attach-payment-method',
+    versionValidation,
     validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
     async (req, res) => {
         const { email, paymentMethodId, customerId } = req.body;
@@ -1020,6 +1046,7 @@ app.post('/attach-payment-method',
 
 
 app.post('/create-setup-intent',
+    versionValidation,
     validateRequiredFields(['email', 'customerId']),
     async (req, res) => {
         const { email, customerId } = req.body;
@@ -1046,6 +1073,7 @@ app.post('/create-setup-intent',
 
 
 app.post('/create-payment-intent',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
     async (req, res) => {
@@ -1131,6 +1159,7 @@ app.post('/create-payment-intent',
 
 
 app.post('/refund-amount',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'amount']),
     async (req, res) => {
@@ -1150,6 +1179,7 @@ app.post('/refund-amount',
 
 
 app.post('/failed-payment',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'name', 'subscription', 'amount']),
     async (req, res) => {
@@ -1172,6 +1202,7 @@ app.post('/failed-payment',
 
 
 app.post('/get-stripe-transactions',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email']),
     async (req, res) => {
@@ -1305,6 +1336,7 @@ app.post('/get-stripe-transactions',
 
 
 app.post('/trial-cancellation',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email']),
     async (req, res) => {
@@ -1324,6 +1356,7 @@ app.post('/trial-cancellation',
 
 
 app.post('/downgrade-subscription',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
     async (req, res) => {
@@ -1345,6 +1378,7 @@ app.post('/downgrade-subscription',
 
 
 app.post('/cancel-subscription',
+    versionValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
     async (req, res) => {
@@ -1367,7 +1401,7 @@ app.post('/cancel-subscription',
     });
 
 
-app.post('/download-csv', authenticateToken, (req, res) => {
+app.post('/download-csv', versionValidation, authenticateToken, (req, res) => {
     try {
         const { data, email } = req.body;
 
@@ -1385,6 +1419,7 @@ app.post('/download-csv', authenticateToken, (req, res) => {
 
 
 app.post('/rollback-registration',
+    versionValidation,
     optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
