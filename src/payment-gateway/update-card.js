@@ -1,4 +1,4 @@
-const { updateUserPassOrProfile } = require('../src/authentication/user-auth/auth');
+const { updateUserPassOrProfile } = require('../authentication/user-auth/auth');
 
 // eslint-disable-next-line no-undef
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
