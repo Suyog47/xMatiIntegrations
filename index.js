@@ -35,6 +35,7 @@ const { trialCancellation } = require('./src/subscription-services/trial-cancel'
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
 const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
 const { disableTimeout, errorHandler, validateRequiredFields } = require('./src/middleware/common');
+const { getVersions } = require('./src/version/get-version');
 
 require('dotenv').config();
 
@@ -1437,6 +1438,33 @@ app.post('/rollback-registration',
             });
         }
     });
+
+
+app.get('/get-versions', optionalAuth, async (req, res) => {
+    try {
+        const result = await getVersions();
+
+        if (result.status) {
+            return res.status(200).json({
+                success: true,
+                message: result.message,
+                data: result.data
+            });
+        } else {
+            return res.status(404).json({
+                success: false,
+                message: result.message
+            });
+        }
+    } catch (error) {
+        console.error('Error in get-child-node-version endpoint:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Something went wrong while retrieving child-node version',
+            error: error.message
+        });
+    }
+});
 
 
 // function streamToString(stream) {

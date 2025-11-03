@@ -72,6 +72,7 @@ async function getDocument(collectionName, key) {
         const database = await connectMongo();
         const coll = database.collection(collectionName);
         const doc = await coll.findOne({ key });
+        if (!doc) return null;
         return doc.content; 
     } catch (error) {
         console.error("getDocument error:", error);
