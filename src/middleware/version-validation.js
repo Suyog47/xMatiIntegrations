@@ -16,7 +16,6 @@ async function versionValidation(req, res, next) {
         }
 
         const validationResult = await validateVersion(clientVersion);
-       
         if (!validationResult.valid) {
             return res.status(400).json({
                 success: false,

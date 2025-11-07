@@ -44,7 +44,9 @@ require('dotenv').config();
 const allowedOrigins = [
     'https://www.app.xmati.ai',
     'https://app.xmati.ai',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    'http://localhost:5000',
+    'http://localhost:5001'
 ];
 
 app.use(cors({
@@ -697,7 +699,7 @@ app.get('/get-maintenance', versionValidation, async (req, res) => {
 });
 
 
-app.get('/get-all-users-subscriptions', versionValidation, authenticateToken, async (req, res) => {
+app.get('/get-all-users-subscriptions', versionValidation, optionalAuth, async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
         const userKeys = await getFromMongoByPrefix('xmati-users', '');
@@ -840,7 +842,6 @@ app.post('/delete-bot',
 
 
 app.post('/check-user',
-    versionValidation,
     validateRequiredFields(['email', 'from']),
     async (req, res) => {
         try {
@@ -861,7 +862,6 @@ app.post('/check-user',
 
 
 app.post('/send-email-otp',
-    versionValidation,
     validateRequiredFields(['fullName', 'email', 'otp']),
     async (req, res) => {
         const { fullName, email, otp } = req.body;
@@ -1203,7 +1203,7 @@ app.post('/failed-payment',
 
 app.post('/get-stripe-transactions',
     versionValidation,
-    authenticateToken,
+    optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email } = req.body
