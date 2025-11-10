@@ -19,6 +19,7 @@ const { saveBot } = require('./src/bot-services/save-bot');
 const { deleteBot } = require('./src/bot-services/delete-bot');
 const { submitEnquiry } = require('./src/enquiry/submit-enquiry');
 const { getEnquiry } = require('./src/enquiry/get-enquiry');
+const { getUserEnquiries } = require('./src/enquiry/get-user-enquiries');
 const {
     paymentFailedEmail,
     profileUpdateConfirmationEmail,
@@ -46,7 +47,8 @@ const allowedOrigins = [
     'https://app.xmati.ai',
     'http://localhost:3000',
     'http://localhost:5000',
-    'http://localhost:5001'
+    'http://localhost:5001',
+    'http://localhost:7001'
 ];
 
 app.use(cors({
@@ -663,6 +665,38 @@ app.get('/get-enquiries',
             return res.status(500).json({
                 success: false,
                 msg: 'Something went wrong while retrieving enquiries'
+            });
+        }
+    });
+
+
+app.post('/get-user-enquiries',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            let result = await getUserEnquiries(email);
+
+            if (result === false) {
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Failed to retrieve user enquiries'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                msg: 'User enquiries retrieved successfully',
+                data: result,
+            });
+        } catch (error) {
+            console.error('Error retrieving user enquiries:', error);
+            return res.status(500).json({
+                success: false,
+                msg: 'Something went wrong while retrieving user enquiries'
             });
         }
     });
