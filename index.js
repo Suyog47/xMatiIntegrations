@@ -29,9 +29,11 @@ const {
 } = require('./templates/email_template');
 const { downloadCSV } = require('./src/csv-download');
 const cors = require("cors");
+// const path = require('path');
 const app = express();
 const http = require('http');
 const { checkUser } = require('./src/authentication/check-user');
+const WebSocketManager = require('./src/websocket/websocket-manager');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
 const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
@@ -66,6 +68,9 @@ app.use(cors({
 
 const server = http.createServer(app);
 
+// Initialize WebSocket Manager
+const wsManager = new WebSocketManager(server);
+
 // Disable timeout at server level
 server.timeout = 0;
 
@@ -95,6 +100,37 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 app.get('/', (req, res) => {
     res.send('Hello, Express!');
 });
+
+// Trigger logout endpoint
+app.post('/trigger-logout', 
+    validateRequiredFields(['userId']),
+    async (req, res) => {
+        try {
+            const { userId } = req.body;
+            
+            // Send force logout message using userId as clientId
+            const success = wsManager.sendForceLogout(userId);
+            
+            if (success) {
+                return res.status(200).json({
+                    success: true,
+                    message: `Force logout signal sent to user ${userId} successfully`
+                });
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: `User ${userId} not found or not connected via WebSocket`
+                });
+            }
+        } catch (error) {
+            console.error('Error triggering logout:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to trigger logout',
+                error: error.message
+            });
+        }
+    });
 
 // sample post - with version validation
 app.post('/', versionValidation, (req, res) => {
@@ -1534,6 +1570,115 @@ app.get('/get-versions', optionalAuth, async (req, res) => {
         });
     }
 });
+
+
+// WebSocket API endpoints
+app.get('/websocket/stats', 
+    versionValidation,
+    optionalAuth,
+    async (req, res) => {
+        try {
+            const stats = wsManager.getStats();
+            return res.status(200).json({
+                success: true,
+                message: 'WebSocket stats retrieved successfully',
+                data: stats
+            });
+        } catch (error) {
+            console.error('Error getting WebSocket stats:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to get WebSocket stats',
+                error: error.message
+            });
+        }
+    });
+
+
+app.post('/websocket/send-message-to-user',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['userId', 'message']),
+    async (req, res) => {
+        try {
+            const { userId, message } = req.body;
+            
+            const success = wsManager.sendMessageToUser(userId, message);
+            
+            if (success) {
+                return res.status(200).json({
+                    success: true,
+                    message: `Message sent to user ${userId} successfully`
+                });
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: `User ${userId} not found or not connected`
+                });
+            }
+        } catch (error) {
+            console.error('Error sending message to user:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send message to user',
+                error: error.message
+            });
+        }
+    });
+
+
+app.post('/websocket/send-message-to-room',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['room', 'message']),
+    async (req, res) => {
+        try {
+            const { room, message } = req.body;
+            
+            wsManager.sendMessageToRoom(room, message);
+            
+            return res.status(200).json({
+                success: true,
+                message: `Message sent to room ${room} successfully`
+            });
+        } catch (error) {
+            console.error('Error sending message to room:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send message to room',
+                error: error.message
+            });
+        }
+    });
+
+
+app.post('/websocket/broadcast',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['message']),
+    async (req, res) => {
+        try {
+            const { message } = req.body;
+            
+            wsManager.broadcastToAll({
+                type: 'server_broadcast',
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            return res.status(200).json({
+                success: true,
+                message: 'Broadcast message sent successfully'
+            });
+        } catch (error) {
+            console.error('Error broadcasting message:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to broadcast message',
+                error: error.message
+            });
+        }
+    });
 
 
 // function streamToString(stream) {

@@ -40,7 +40,8 @@
     "nodemon": "^3.1.9",
     "oci-common": "^2.100.2",
     "oci-oda": "^2.100.2",
-    "stripe": "^18.1.0"
+    "stripe": "^18.1.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
