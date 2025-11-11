@@ -1,13 +1,13 @@
 const WebSocket = require("ws");
 
 class WebSocketManager {
- constructor(server) {
+  constructor(server) {
     // Initialize WebSocket server
     this.wss = new WebSocket.Server({ server });
     // Store connected clients (key: childId, value: WebSocket)
     this.clients = new Map();
     this.setupWebSocketServer();
- }
+  }
 
   setupWebSocketServer() {
     this.wss.on("connection", (ws) => {
@@ -16,34 +16,34 @@ class WebSocketManager {
       ws.on("message", (data) => {
         try {
           const message = JSON.parse(data.toString());
-
           // Handle message types
           if (message.type === "REGISTER_CHILD") {
-            const { childId } = message;
-            if (!childId) {
-              ws.send(JSON.stringify({ type: "error", message: "childId required" }));
+            const { userId } = message;
+            if (!userId) {
+              ws.send(JSON.stringify({ type: "error", message: "userId required" }));
               return;
             }
 
-            // If another connection exists for same childId, close it
-            const existingWs = this.clients.get(childId);
-            if (existingWs && existingWs.readyState === WebSocket.OPEN) {
-              existingWs.send(
-                JSON.stringify({
-                  type: "FORCE_LOGOUT",
-                  message: "Another login detected. You have been logged out.",
-                })
-              );
-              existingWs.close();
-            }
+
+            // // If another connection exists for same childId, close it
+            // const existingWs = this.clients.get(childId);
+            // if (existingWs && existingWs.readyState === WebSocket.OPEN) {
+            //   existingWs.send(
+            //     JSON.stringify({
+            //       type: "FORCE_LOGOUT",
+            //       message: "Another login detected. You have been logged out.",
+            //     })
+            //   );
+            //   existingWs.close();
+            // }
 
             // Register new connection
-            this.clients.set(childId, ws);
-            console.log(`Registered child: ${childId}`);
+            this.clients.set(userId, ws);
+            console.log(`Registered child: ${userId}`);
             ws.send(
               JSON.stringify({
                 type: "REGISTER_SUCCESS",
-                message: `Child ${childId} registered successfully.`,
+                message: `User ${userId} registered successfully.`,
               })
             );
           }
