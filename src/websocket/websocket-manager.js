@@ -11,7 +11,6 @@ class WebSocketManager {
 
   setupWebSocketServer() {
     this.wss.on("connection", (ws) => {
-      console.log("New WebSocket connection established.");
 
       ws.on("message", (data) => {
         try {
@@ -39,7 +38,7 @@ class WebSocketManager {
 
             // Register new connection
             this.clients.set(userId, ws);
-            console.log(`Registered child: ${userId}`);
+
             ws.send(
               JSON.stringify({
                 type: "REGISTER_SUCCESS",
@@ -54,10 +53,9 @@ class WebSocketManager {
 
       ws.on("close", () => {
         // Clean up disconnected clients
-        for (const [childId, socket] of this.clients.entries()) {
+        for (const [userId, socket] of this.clients.entries()) {
           if (socket === ws) {
-            this.clients.delete(childId);
-            console.log(`Child ${childId} disconnected.`);
+            this.clients.delete(userId);
             break;
           }
         }
@@ -70,8 +68,8 @@ class WebSocketManager {
   }
 
   // Called from your Mother app (HTTP or programmatic trigger)
-  sendForceLogout(childId) {
-    const ws = this.clients.get(childId);
+  sendForceLogout(userId) {
+    const ws = this.clients.get(userId);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(
         JSON.stringify({
@@ -80,11 +78,11 @@ class WebSocketManager {
         })
       );
       ws.close();
-      this.clients.delete(childId);
-      console.log(`Sent FORCE_LOGOUT to child ${childId}`);
+      this.clients.delete(userId);
+      console.log(`Sent FORCE_LOGOUT to user ${userId}`);
       return true;
     } else {
-      console.log(`Child ${childId} not connected.`);
+      console.log(`User ${userId} not connected.`);
       return false;
     }
   }

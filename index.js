@@ -101,37 +101,6 @@ app.get('/', (req, res) => {
     res.send('Hello, Express!');
 });
 
-// Trigger logout endpoint
-app.post('/trigger-logout', 
-    validateRequiredFields(['userId']),
-    async (req, res) => {
-        try {
-            const { userId } = req.body;
-            
-            // Send force logout message using userId as clientId
-            const success = wsManager.sendForceLogout(userId);
-            
-            if (success) {
-                return res.status(200).json({
-                    success: true,
-                    message: `Force logout signal sent to user ${userId} successfully`
-                });
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: `User ${userId} not found or not connected via WebSocket`
-                });
-            }
-        } catch (error) {
-            console.error('Error triggering logout:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to trigger logout',
-                error: error.message
-            });
-        }
-    });
-
 // sample post - with version validation
 app.post('/', versionValidation, (req, res) => {
     res.send('Hello, Express! Version validated successfully.');
@@ -548,6 +517,7 @@ app.post('/save-subscription',
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
     async (req, res) => {
         const { key, name, subscription, duration, amount } = req.body;
+        triggerLogout(key)
         let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
 
         if (!result.status) {
@@ -556,6 +526,33 @@ app.post('/save-subscription',
 
         res.status(200).json({ status: true, msg: 'Subscription data saved successfully' });
     });
+
+async function triggerLogout(userId) {
+     try {
+            
+            // Send force logout message using userId as clientId
+            const success = wsManager.sendForceLogout(userId);
+
+            if (success) {
+                return {
+                    success: true,
+                    message: `Force logout signal sent to user ${userId} successfully`
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `User ${userId} not found or not connected via WebSocket`
+                };
+            }
+        } catch (error) {
+            console.error('Error triggering logout:', error);
+            return {
+                success: false,
+                message: 'Failed to trigger logout',
+                error: error.message
+            };
+        }
+}
 
 
 app.post('/nextsub-upgrade',
