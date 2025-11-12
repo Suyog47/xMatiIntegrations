@@ -86,6 +86,25 @@ class WebSocketManager {
       return false;
     }
   }
+
+  sendBlockStatus(userId, status) {
+    const ws = this.clients.get(userId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: `BLOCK_STATUS`,
+          message: `${status ? 'Blocked' : 'Unblocked'}`,
+        })
+      );
+      ws.close();
+      this.clients.delete(userId);
+      console.log(`Sent FORCE_BLOCK to user ${userId}`);
+      return true;
+    } else {
+      console.log(`User ${userId} not connected.`);
+      return false;
+    }
+  }
 }
 
 module.exports = WebSocketManager;

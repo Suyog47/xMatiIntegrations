@@ -17,7 +17,7 @@ const errorHandler = (err, req, res, next) => {
 // Validate required fields middleware factory
 const validateRequiredFields = (fields) => {
   return (req, res, next) => {
-    const missingFields = fields.filter(field => !req.body[field]);
+    const missingFields = fields.filter(field => req.body[field] === undefined);
     
     if (missingFields.length > 0) {
       return res.status(400).json({

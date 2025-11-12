@@ -528,30 +528,29 @@ app.post('/save-subscription',
     });
 
 async function triggerLogout(userId) {
-     try {
-            
-            // Send force logout message using userId as clientId
-            const success = wsManager.sendForceLogout(userId);
+    try {
+        // Send force logout message using userId as clientId
+        const success = wsManager.sendForceLogout(userId);
 
-            if (success) {
-                return {
-                    success: true,
-                    message: `Force logout signal sent to user ${userId} successfully`
-                };
-            } else {
-                return {
-                    success: false,
-                    message: `User ${userId} not found or not connected via WebSocket`
-                };
-            }
-        } catch (error) {
-            console.error('Error triggering logout:', error);
+        if (success) {
+            return {
+                success: true,
+                message: `Force logout signal sent to user ${userId} successfully`
+            };
+        } else {
             return {
                 success: false,
-                message: 'Failed to trigger logout',
-                error: error.message
+                message: `User ${userId} not found or not connected via WebSocket`
             };
         }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
 }
 
 
@@ -1495,7 +1494,7 @@ app.post('/rollback-registration',
 
             // Delete user data from xmati-users collection
             const userDeleteResult = await deleteFromMongo("xmati-users", email);
-            
+
             // Delete subscription data from xmati-subscriber collection
             const subscriptionDeleteResult = await deleteFromMongo("xmati-subscriber", email);
 
@@ -1569,8 +1568,99 @@ app.get('/get-versions', optionalAuth, async (req, res) => {
 });
 
 
+app.post('/set-block-status',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email', 'status']),
+    async (req, res) => {
+        try {
+            const { email, status } = req.body;
+
+            // Validate status is boolean
+            if (typeof status !== 'boolean') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Status must be a boolean value (true or false)'
+                });
+            }
+
+            // Check if user exists
+            const userData = await getDocument("xmati-users", email);
+            if (!userData) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            // Update the user document with blocked status
+            const updatedUserData = {
+                ...userData,
+                blocked: status
+            };
+
+            // Save the updated document
+            const saveResult = await saveDocument("xmati-users", email, updatedUserData);
+
+            if (!saveResult) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to update user block status'
+                });
+            }
+
+            // Trigger blocking/unblocking via WebSocket 
+            try {
+                await triggerBlock(email, status);
+            } catch (blockError) {
+                console.warn('Failed to trigger block for user:', blockError.message);
+                // Don't fail the entire operation if block fails
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: `User ${status ? 'blocked' : 'unblocked'} successfully`,
+            });
+
+        } catch (error) {
+            console.error('Error in set-block-status endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while updating user block status',
+                error: error.message
+            });
+        }
+    });
+
+async function triggerBlock(userId, status) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendBlockStatus(userId, status);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
+
+
 // WebSocket API endpoints
-app.get('/websocket/stats', 
+app.get('/websocket/stats',
     versionValidation,
     optionalAuth,
     async (req, res) => {
@@ -1599,9 +1689,9 @@ app.post('/websocket/send-message-to-user',
     async (req, res) => {
         try {
             const { userId, message } = req.body;
-            
+
             const success = wsManager.sendMessageToUser(userId, message);
-            
+
             if (success) {
                 return res.status(200).json({
                     success: true,
@@ -1631,9 +1721,9 @@ app.post('/websocket/send-message-to-room',
     async (req, res) => {
         try {
             const { room, message } = req.body;
-            
+
             wsManager.sendMessageToRoom(room, message);
-            
+
             return res.status(200).json({
                 success: true,
                 message: `Message sent to room ${room} successfully`
@@ -1656,13 +1746,13 @@ app.post('/websocket/broadcast',
     async (req, res) => {
         try {
             const { message } = req.body;
-            
+
             wsManager.broadcastToAll({
                 type: 'server_broadcast',
                 message: message,
                 timestamp: new Date().toISOString()
             });
-            
+
             return res.status(200).json({
                 success: true,
                 message: 'Broadcast message sent successfully'
