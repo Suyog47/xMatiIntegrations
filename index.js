@@ -517,6 +517,7 @@ app.post('/save-subscription',
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
     async (req, res) => {
         const { key, name, subscription, duration, amount } = req.body;
+        
         triggerLogout(key)
         let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
 
@@ -1450,7 +1451,8 @@ app.post('/cancel-subscription',
     async (req, res) => {
         try {
             const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
-
+            
+            triggerLogout(email)
             let result = await cancelSubscription(chargeId, reason, email, fullName, subscription, amount, refundDetails);
             if (!result) {
                 return res.status(400).json({ success: false, message: 'Failed to cancel subscription' });
