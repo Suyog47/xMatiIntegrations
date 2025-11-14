@@ -96,8 +96,8 @@ class WebSocketManager {
           message: `${status ? 'Blocked' : 'Unblocked'}`,
         })
       );
-      ws.close();
-      this.clients.delete(userId);
+      // ws.close();
+      // this.clients.delete(userId);
       console.log(`Sent FORCE_BLOCK to user ${userId}`);
       return true;
     } else {
@@ -115,8 +115,8 @@ class WebSocketManager {
           message: `${version}`,
         })
       );
-      ws.close();
-      this.clients.delete(userId);
+      // ws.close();
+      // this.clients.delete(userId);
       console.log(`Sent VERSION_UPDATE to user ${userId}`);
       return true;
     } else {
@@ -126,23 +126,70 @@ class WebSocketManager {
   }
 
   sendMaintenanceStatus(userId, status) {
-    const ws = this.clients.get(userId);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: `MAINTENANCE_STATUS`,
-          message: status,
-        })
-      );
-      ws.close();
-      this.clients.delete(userId);
-      console.log(`Sent MAINTENANCE_STATUS to user ${userId}`);
-      return true;
-    } else {
-      console.log(`User ${userId} not connected.`);
-      return false;
+    // If userId is specific, send to that user only
+    if (userId !== 'all') {
+      const ws = this.clients.get(userId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: `MAINTENANCE_STATUS`,
+            message: status,
+          })
+        );
+        // ws.close();
+        // this.clients.delete(userId);
+        console.log(`Sent MAINTENANCE_STATUS to user ${userId}`);
+        return true;
+      } else {
+        console.log(`User ${userId} not connected.`);
+        return false;
+      }
     }
+
+    // if userId is 'all', broadcast to all connected clients
+    let count = 0;
+
+    for (const [clientId, client] of this.clients.entries()) {
+      const ws = client.ws || client;  // depending on your storage structure
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: "MAINTENANCE_STATUS",
+            message: status,
+          })
+        );
+        console.log(`Sent MAINTENANCE_STATUS to user ${clientId}`);
+        count++;
+      }
+    }
+
+    if (count === 0) {
+      console.log("No connected users to broadcast MAINTENANCE_STATUS.");
+    }
+
+    return true;
   }
+
+
+  //   sendMaintenanceStatus(userId, status) {
+  //     const ws = this.clients.get(userId);
+  //     if (ws && ws.readyState === WebSocket.OPEN) {
+  //       ws.send(
+  //         JSON.stringify({
+  //           type: `MAINTENANCE_STATUS`,
+  //           message: status,
+  //         })
+  //       );
+  //       //ws.close();
+  //       //this.clients.delete(userId);
+  //       console.log(`Sent MAINTENANCE_STATUS to user ${userId}`);
+  //       return true;
+  //     } else {
+  //       console.log(`User ${userId} not connected.`);
+  //       return false;
+  //     }
+  //   }
 }
 
 module.exports = WebSocketManager;

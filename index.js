@@ -748,6 +748,30 @@ app.post('/get-user-enquiries',
         }
     });
 
+app.post('/check-account-status',
+    versionValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        try {
+            // Maintenance status check
+            let data = await getMaintenance();
+            triggerMaintenanceStatus(email, data.maintenance);
+
+            // Block status check
+            const userData = await getDocument("xmati-users", email);
+            triggerBlock(email, userData.blocked || false);
+
+            // Version check
+            const result = await getVersions();
+            triggerVersionMismatch(email, result.data['child-node']);
+            res.status(200);
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while checking account status' });
+        }
+    });
 
 app.post('/set-maintenance',
     versionValidation,
@@ -757,10 +781,9 @@ app.post('/set-maintenance',
         try {
             const { status } = req.body;
 
-            console.log("Setting maintenance status to:", status);
             // Save the maintenance status to S3
             await saveDocument("xmati-extra", "maintenance-status", JSON.stringify({ status }));
-
+            triggerMaintenanceStatus('all', status);
             return res.status(200).json({ status: true, msg: 'Maintenance status updated successfully' });
         } catch (error) {
             console.log(error);
@@ -768,19 +791,179 @@ app.post('/set-maintenance',
         }
     });
 
+app.post('/get-maintenance',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        let data = await getMaintenance();
 
-app.post('/get-maintenance', validateRequiredFields(['email']), async (req, res) => {
-    const { email } = req.body;
-    let data = await getMaintenance();
+        if (data.status) {
+            triggerMaintenanceStatus(email, data.maintenance);
+            return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
+        }
+        else {
+            return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
+        }
+    });
 
-    if (data.status) {
-        triggerMaintenanceStatus(email, data.maintenance);
-        return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
+app.post('/get-versions',
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        try {
+            const result = await getVersions();
+            triggerVersionMismatch(email, result.data['child-node']);
+            console.log(result.data['child-node'])
+            if (result.status) {
+
+                return res.status(200).json({
+                    success: true,
+                    message: result.message,
+                    data: result.data
+                });
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: result.message
+                });
+            }
+        } catch (error) {
+            console.error('Error in get-child-node-version endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while retrieving child-node version',
+                error: error.message
+            });
+        }
+    });
+
+app.post('/set-block-status',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email', 'status']),
+    async (req, res) => {
+        try {
+            const { email, status } = req.body;
+
+            // Validate status is boolean
+            if (typeof status !== 'boolean') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Status must be a boolean value (true or false)'
+                });
+            }
+
+            // Check if user exists
+            const userData = await getDocument("xmati-users", email);
+            if (!userData) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            // Update the user document with blocked status
+            const updatedUserData = {
+                ...userData,
+                blocked: status
+            };
+
+            // Save the updated document
+            const saveResult = await saveDocument("xmati-users", email, updatedUserData);
+
+            if (!saveResult) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to update user block status'
+                });
+            }
+
+            // Trigger blocking/unblocking via WebSocket 
+            try {
+                await triggerBlock(email, status);
+            } catch (blockError) {
+                console.warn('Failed to trigger block for user:', blockError.message);
+                // Don't fail the entire operation if block fails
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: `User ${status ? 'blocked' : 'unblocked'} successfully`,
+            });
+
+        } catch (error) {
+            console.error('Error in set-block-status endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while updating user block status',
+                error: error.message
+            });
+        }
+    });
+
+app.post('/get-block-status',
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Check if user exists
+            const userData = await getDocument("xmati-users", email);
+            if (!userData) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: `User is ${userData.blocked ? 'blocked' : 'unblocked'}`,
+                data: userData.blocked || false
+            });
+
+        } catch (error) {
+            console.error('Error in set-block-status endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while updating user block status',
+                error: error.message
+            });
+        }
+    });
+
+
+async function triggerVersionMismatch(userId, version) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendVersionStatus(userId, version);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
     }
-    else {
-        return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
-    }
-});
+}
 
 async function triggerMaintenanceStatus(userId, status) {
     try {
@@ -807,6 +990,33 @@ async function triggerMaintenanceStatus(userId, status) {
         };
     }
 }
+
+async function triggerBlock(userId, status) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendBlockStatus(userId, status);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
+
 
 app.get('/get-all-users-subscriptions', versionValidation, optionalAuth, async (req, res) => {
     try {
@@ -1598,156 +1808,6 @@ app.post('/rollback-registration',
             });
         }
     });
-
-
-app.post('/get-versions',
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        const { email } = req.body;
-        try {
-            const result = await getVersions();
-            triggerVersionMismatch(email, result.data['child-node']);
-            console.log(result.data['child-node'])
-            if (result.status) {
-               
-                return res.status(200).json({
-                    success: true,
-                    message: result.message,
-                    data: result.data
-                });
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: result.message
-                });
-            }
-        } catch (error) {
-            console.error('Error in get-child-node-version endpoint:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Something went wrong while retrieving child-node version',
-                error: error.message
-            });
-        }
-    });
-
-async function triggerVersionMismatch(userId, version) {
-    try {
-        // Send force block message using userId as clientId
-        const success = wsManager.sendVersionStatus(userId, version);
-
-        if (success) {
-            return {
-                success: true,
-                message: `Force block signal sent to user ${userId} successfully`
-            };
-        } else {
-            return {
-                success: false,
-                message: `User ${userId} not found or not connected via WebSocket`
-            };
-        }
-    } catch (error) {
-        console.error('Error triggering logout:', error);
-        return {
-            success: false,
-            message: 'Failed to trigger logout',
-            error: error.message
-        };
-    }
-}
-
-app.post('/set-block-status',
-    versionValidation,
-    authenticateToken,
-    validateRequiredFields(['email', 'status']),
-    async (req, res) => {
-        try {
-            const { email, status } = req.body;
-
-            // Validate status is boolean
-            if (typeof status !== 'boolean') {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Status must be a boolean value (true or false)'
-                });
-            }
-
-            // Check if user exists
-            const userData = await getDocument("xmati-users", email);
-            if (!userData) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'User not found'
-                });
-            }
-
-            // Update the user document with blocked status
-            const updatedUserData = {
-                ...userData,
-                blocked: status
-            };
-
-            // Save the updated document
-            const saveResult = await saveDocument("xmati-users", email, updatedUserData);
-
-            if (!saveResult) {
-                return res.status(500).json({
-                    success: false,
-                    message: 'Failed to update user block status'
-                });
-            }
-
-            // Trigger blocking/unblocking via WebSocket 
-            try {
-                await triggerBlock(email, status);
-            } catch (blockError) {
-                console.warn('Failed to trigger block for user:', blockError.message);
-                // Don't fail the entire operation if block fails
-            }
-
-            return res.status(200).json({
-                success: true,
-                message: `User ${status ? 'blocked' : 'unblocked'} successfully`,
-            });
-
-        } catch (error) {
-            console.error('Error in set-block-status endpoint:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Something went wrong while updating user block status',
-                error: error.message
-            });
-        }
-    });
-
-async function triggerBlock(userId, status) {
-    try {
-        // Send force block message using userId as clientId
-        const success = wsManager.sendBlockStatus(userId, status);
-
-        if (success) {
-            return {
-                success: true,
-                message: `Force block signal sent to user ${userId} successfully`
-            };
-        } else {
-            return {
-                success: false,
-                message: `User ${userId} not found or not connected via WebSocket`
-            };
-        }
-    } catch (error) {
-        console.error('Error triggering logout:', error);
-        return {
-            success: false,
-            message: 'Failed to trigger logout',
-            error: error.message
-        };
-    }
-}
 
 
 // WebSocket API endpoints
