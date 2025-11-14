@@ -517,7 +517,7 @@ app.post('/save-subscription',
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
     async (req, res) => {
         const { key, name, subscription, duration, amount } = req.body;
-        
+
         triggerLogout(key)
         let result = await SaveSubscription(key, name, subscription, duration, 0, amount, false)
 
@@ -754,10 +754,12 @@ app.post('/set-maintenance',
     });
 
 
-app.get('/get-maintenance', versionValidation, async (req, res) => {
+app.post('/get-maintenance', validateRequiredFields(['email']), async (req, res) => {
+    const { email } = req.body;
     let data = await getMaintenance();
 
     if (data.status) {
+        triggerMaintenanceStatus(email, data.maintenance);
         return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
     }
     else {
@@ -765,6 +767,31 @@ app.get('/get-maintenance', versionValidation, async (req, res) => {
     }
 });
 
+async function triggerMaintenanceStatus(userId, status) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendMaintenanceStatus(userId, status);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
 
 app.get('/get-all-users-subscriptions', versionValidation, optionalAuth, async (req, res) => {
     try {
@@ -1451,7 +1478,7 @@ app.post('/cancel-subscription',
     async (req, res) => {
         try {
             const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
-            
+
             triggerLogout(email)
             let result = await cancelSubscription(chargeId, reason, email, fullName, subscription, amount, refundDetails);
             if (!result) {
@@ -1543,32 +1570,63 @@ app.post('/rollback-registration',
     });
 
 
-app.get('/get-versions', optionalAuth, async (req, res) => {
-    try {
-        const result = await getVersions();
-
-        if (result.status) {
-            return res.status(200).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
-        } else {
-            return res.status(404).json({
+app.post('/get-versions',
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        try {
+            const result = await getVersions();
+            triggerVersionMismatch(email, result.data['child-node']);
+            console.log(result.data['child-node'])
+            if (result.status) {
+               
+                return res.status(200).json({
+                    success: true,
+                    message: result.message,
+                    data: result.data
+                });
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: result.message
+                });
+            }
+        } catch (error) {
+            console.error('Error in get-child-node-version endpoint:', error);
+            return res.status(500).json({
                 success: false,
-                message: result.message
+                message: 'Something went wrong while retrieving child-node version',
+                error: error.message
             });
         }
-    } catch (error) {
-        console.error('Error in get-child-node-version endpoint:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Something went wrong while retrieving child-node version',
-            error: error.message
-        });
-    }
-});
+    });
 
+async function triggerVersionMismatch(userId, version) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendVersionStatus(userId, version);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
 
 app.post('/set-block-status',
     versionValidation,
@@ -1662,112 +1720,112 @@ async function triggerBlock(userId, status) {
 
 
 // WebSocket API endpoints
-app.get('/websocket/stats',
-    versionValidation,
-    optionalAuth,
-    async (req, res) => {
-        try {
-            const stats = wsManager.getStats();
-            return res.status(200).json({
-                success: true,
-                message: 'WebSocket stats retrieved successfully',
-                data: stats
-            });
-        } catch (error) {
-            console.error('Error getting WebSocket stats:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to get WebSocket stats',
-                error: error.message
-            });
-        }
-    });
+// app.get('/websocket/stats',
+//     versionValidation,
+//     optionalAuth,
+//     async (req, res) => {
+//         try {
+//             const stats = wsManager.getStats();
+//             return res.status(200).json({
+//                 success: true,
+//                 message: 'WebSocket stats retrieved successfully',
+//                 data: stats
+//             });
+//         } catch (error) {
+//             console.error('Error getting WebSocket stats:', error);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: 'Failed to get WebSocket stats',
+//                 error: error.message
+//             });
+//         }
+//     });
 
 
-app.post('/websocket/send-message-to-user',
-    versionValidation,
-    authenticateToken,
-    validateRequiredFields(['userId', 'message']),
-    async (req, res) => {
-        try {
-            const { userId, message } = req.body;
+// app.post('/websocket/send-message-to-user',
+//     versionValidation,
+//     authenticateToken,
+//     validateRequiredFields(['userId', 'message']),
+//     async (req, res) => {
+//         try {
+//             const { userId, message } = req.body;
 
-            const success = wsManager.sendMessageToUser(userId, message);
+//             const success = wsManager.sendMessageToUser(userId, message);
 
-            if (success) {
-                return res.status(200).json({
-                    success: true,
-                    message: `Message sent to user ${userId} successfully`
-                });
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: `User ${userId} not found or not connected`
-                });
-            }
-        } catch (error) {
-            console.error('Error sending message to user:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to send message to user',
-                error: error.message
-            });
-        }
-    });
-
-
-app.post('/websocket/send-message-to-room',
-    versionValidation,
-    authenticateToken,
-    validateRequiredFields(['room', 'message']),
-    async (req, res) => {
-        try {
-            const { room, message } = req.body;
-
-            wsManager.sendMessageToRoom(room, message);
-
-            return res.status(200).json({
-                success: true,
-                message: `Message sent to room ${room} successfully`
-            });
-        } catch (error) {
-            console.error('Error sending message to room:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to send message to room',
-                error: error.message
-            });
-        }
-    });
+//             if (success) {
+//                 return res.status(200).json({
+//                     success: true,
+//                     message: `Message sent to user ${userId} successfully`
+//                 });
+//             } else {
+//                 return res.status(404).json({
+//                     success: false,
+//                     message: `User ${userId} not found or not connected`
+//                 });
+//             }
+//         } catch (error) {
+//             console.error('Error sending message to user:', error);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: 'Failed to send message to user',
+//                 error: error.message
+//             });
+//         }
+//     });
 
 
-app.post('/websocket/broadcast',
-    versionValidation,
-    authenticateToken,
-    validateRequiredFields(['message']),
-    async (req, res) => {
-        try {
-            const { message } = req.body;
+// app.post('/websocket/send-message-to-room',
+//     versionValidation,
+//     authenticateToken,
+//     validateRequiredFields(['room', 'message']),
+//     async (req, res) => {
+//         try {
+//             const { room, message } = req.body;
 
-            wsManager.broadcastToAll({
-                type: 'server_broadcast',
-                message: message,
-                timestamp: new Date().toISOString()
-            });
+//             wsManager.sendMessageToRoom(room, message);
 
-            return res.status(200).json({
-                success: true,
-                message: 'Broadcast message sent successfully'
-            });
-        } catch (error) {
-            console.error('Error broadcasting message:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Failed to broadcast message',
-                error: error.message
-            });
-        }
-    });
+//             return res.status(200).json({
+//                 success: true,
+//                 message: `Message sent to room ${room} successfully`
+//             });
+//         } catch (error) {
+//             console.error('Error sending message to room:', error);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: 'Failed to send message to room',
+//                 error: error.message
+//             });
+//         }
+//     });
+
+
+// app.post('/websocket/broadcast',
+//     versionValidation,
+//     authenticateToken,
+//     validateRequiredFields(['message']),
+//     async (req, res) => {
+//         try {
+//             const { message } = req.body;
+
+//             wsManager.broadcastToAll({
+//                 type: 'server_broadcast',
+//                 message: message,
+//                 timestamp: new Date().toISOString()
+//             });
+
+//             return res.status(200).json({
+//                 success: true,
+//                 message: 'Broadcast message sent successfully'
+//             });
+//         } catch (error) {
+//             console.error('Error broadcasting message:', error);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: 'Failed to broadcast message',
+//                 error: error.message
+//             });
+//         }
+//     });
 
 
 // function streamToString(stream) {

@@ -105,6 +105,44 @@ class WebSocketManager {
       return false;
     }
   }
+
+  sendVersionStatus(userId, version) {
+    const ws = this.clients.get(userId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: `VERSION_UPDATE`,
+          message: `${version}`,
+        })
+      );
+      ws.close();
+      this.clients.delete(userId);
+      console.log(`Sent VERSION_UPDATE to user ${userId}`);
+      return true;
+    } else {
+      console.log(`User ${userId} not connected.`);
+      return false;
+    }
+  }
+
+  sendMaintenanceStatus(userId, status) {
+    const ws = this.clients.get(userId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: `MAINTENANCE_STATUS`,
+          message: status,
+        })
+      );
+      ws.close();
+      this.clients.delete(userId);
+      console.log(`Sent MAINTENANCE_STATUS to user ${userId}`);
+      return true;
+    } else {
+      console.log(`User ${userId} not connected.`);
+      return false;
+    }
+  }
 }
 
 module.exports = WebSocketManager;
