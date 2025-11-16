@@ -128,6 +128,12 @@ class WebSocketManager {
   sendMaintenanceStatus(userId, status) {
     // If userId is specific, send to that user only
     if (userId !== 'all') {
+      // Skip the service user
+      if (userId === 'xmatiservice@gmail.com') {
+        console.log('Skipping MAINTENANCE_STATUS for service user xmatiservice@gmail.com');
+        return true;
+      }
+
       const ws = this.clients.get(userId);
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(
@@ -150,6 +156,11 @@ class WebSocketManager {
     let count = 0;
 
     for (const [clientId, client] of this.clients.entries()) {
+      // Skip the service user during broadcast
+      if (clientId === 'xmatiservice@gmail.com') {
+        console.log('Skipping MAINTENANCE_STATUS broadcast for service user xmatiservice@gmail.com');
+        continue;
+      }
       const ws = client.ws || client;  // depending on your storage structure
 
       if (ws.readyState === WebSocket.OPEN) {

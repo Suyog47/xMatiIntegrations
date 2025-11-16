@@ -9,15 +9,15 @@ async function SaveSubscription(key, name, subscription, duration, rdays = 0, am
         let newDate;
 
         if (subscription === 'Trial') {
-            let days = 5;
+            let days = 30;
 
             if (duration === '15d') {
                 // Add 15 days
                 days = 15
             }
             else if (duration === '5d') {
-                // Add 5 days
-                days = 5
+                // Add 30 days
+                days = 30
             }
 
             newDate = new Date(new Date().setDate(currentDate.getDate() + days));

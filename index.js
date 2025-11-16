@@ -793,7 +793,7 @@ app.post('/set-maintenance',
 
 app.post('/get-maintenance',
     versionValidation,
-    authenticateToken,
+    optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email } = req.body;
