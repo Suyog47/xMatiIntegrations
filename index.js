@@ -519,7 +519,6 @@ app.post('/send-email',
 
 
 app.post('/save-subscription',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
@@ -564,7 +563,6 @@ async function triggerLogout(userId) {
 
 
 app.post('/nextsub-upgrade',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
@@ -587,7 +585,6 @@ app.post('/nextsub-upgrade',
 
 
 app.post('/remove-nextsub',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -687,7 +684,6 @@ app.post('/submit-enquiry',
 
 
 app.get('/get-enquiries',
-    versionValidation,
     authenticateToken,
     async (req, res) => {
         try {
@@ -774,7 +770,6 @@ app.post('/check-account-status',
     });
 
 app.post('/set-maintenance',
-    versionValidation,
     authenticateToken,
     validateRequiredFields(['status']),
     async (req, res) => {
@@ -842,7 +837,6 @@ app.post('/get-versions',
     });
 
 app.post('/set-block-status',
-    versionValidation,
     authenticateToken,
     validateRequiredFields(['email', 'status']),
     async (req, res) => {
@@ -1018,7 +1012,7 @@ async function triggerBlock(userId, status) {
 }
 
 
-app.get('/get-all-users-subscriptions', versionValidation, optionalAuth, async (req, res) => {
+app.get('/get-all-users-subscriptions', optionalAuth, async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
         const userKeys = await getFromMongoByPrefix('xmati-users', '');
@@ -1326,7 +1320,6 @@ app.post('/forgot-pass',
 
 
 app.post('/attach-payment-method',
-    versionValidation,
     maintenanceValidation,
     validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
     async (req, res) => {
@@ -1372,7 +1365,6 @@ app.post('/attach-payment-method',
 
 
 app.post('/create-setup-intent',
-    versionValidation,
     maintenanceValidation,
     validateRequiredFields(['email', 'customerId']),
     async (req, res) => {
@@ -1400,7 +1392,6 @@ app.post('/create-setup-intent',
 
 
 app.post('/create-payment-intent',
-    versionValidation,
     maintenanceValidation,
     optionalAuth,
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
@@ -1487,7 +1478,6 @@ app.post('/create-payment-intent',
 
 
 app.post('/refund-amount',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'amount']),
@@ -1508,7 +1498,6 @@ app.post('/refund-amount',
 
 
 app.post('/failed-payment',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'name', 'subscription', 'amount']),
@@ -1532,8 +1521,8 @@ app.post('/failed-payment',
 
 
 app.post('/get-stripe-transactions',
-    versionValidation,
-    optionalAuth,
+    maintenanceValidation,
+    authenticateToken,
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email } = req.body
@@ -1666,7 +1655,6 @@ app.post('/get-stripe-transactions',
 
 
 app.post('/trial-cancellation',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -1687,7 +1675,6 @@ app.post('/trial-cancellation',
 
 
 app.post('/downgrade-subscription',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
@@ -1710,7 +1697,6 @@ app.post('/downgrade-subscription',
 
 
 app.post('/cancel-subscription',
-    versionValidation,
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
@@ -1735,7 +1721,10 @@ app.post('/cancel-subscription',
     });
 
 
-app.post('/download-csv', versionValidation, authenticateToken, (req, res) => {
+app.post('/download-csv',
+     maintenanceValidation, 
+     authenticateToken, 
+     (req, res) => {
     try {
         const { data, email } = req.body;
 
@@ -1753,7 +1742,6 @@ app.post('/download-csv', versionValidation, authenticateToken, (req, res) => {
 
 
 app.post('/rollback-registration',
-    versionValidation,
     maintenanceValidation,
     optionalAuth,
     validateRequiredFields(['email']),
