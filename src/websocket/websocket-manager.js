@@ -23,19 +23,6 @@ class WebSocketManager {
               return;
             }
 
-
-            // // If another connection exists for same childId, close it
-            // const existingWs = this.clients.get(childId);
-            // if (existingWs && existingWs.readyState === WebSocket.OPEN) {
-            //   existingWs.send(
-            //     JSON.stringify({
-            //       type: "FORCE_LOGOUT",
-            //       message: "Another login detected. You have been logged out.",
-            //     })
-            //   );
-            //   existingWs.close();
-            // }
-
             // Register new connection
             this.clients.set(userId, ws);
 
@@ -89,15 +76,24 @@ class WebSocketManager {
 
   sendBlockStatus(userId, status) {
     const ws = this.clients.get(userId);
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    const ws2 = this.clients.get(`${userId}_util`);  // this websocket trigger is for xMati Mother (Util)
+    if ((ws && ws.readyState === WebSocket.OPEN)) {
       ws.send(
         JSON.stringify({
           type: `BLOCK_STATUS`,
           message: `${status ? 'Blocked' : 'Unblocked'}`,
         })
       );
-      // ws.close();
-      // this.clients.delete(userId);
+
+      if (ws2 && ws2.readyState === WebSocket.OPEN) {
+        ws2.send(
+          JSON.stringify({
+            type: `BLOCK_STATUS`,
+            message: `${status ? 'Blocked' : 'Unblocked'}`,
+          })
+        );
+      }
+
       console.log(`Sent FORCE_BLOCK to user ${userId}`);
       return true;
     } else {
