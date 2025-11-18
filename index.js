@@ -102,11 +102,6 @@ app.get('/', (req, res) => {
     res.send('Hello, Express!');
 });
 
-// sample post - with version validation and maintenance check
-app.post('/', versionValidation, maintenanceValidation, (req, res) => {
-    res.send('Hello, Express! Version validated and maintenance check passed successfully.');
-});
-
 // // Endpoint to create a Lex bot
 // app.post('/lexbot', async (req, res) => {
 //     try {
@@ -231,37 +226,18 @@ app.post('/', versionValidation, maintenanceValidation, (req, res) => {
 // });
 
 
+// ################ Before Auth APIs ################
 
-app.post('/mongo-save', versionValidation, maintenanceValidation, async (req, res) => {
-    const saveRes = await saveDocument("xmati-users", "user123", { name: "Alice", plan: "premium" });
-    console.log("saveRes:", saveRes);
 
-    res.status(200).json({ status: "ok", saveRes });
-});
+// ################ After Auth APIs ################
 
-app.get('/mongo-get', versionValidation, maintenanceValidation, async (req, res) => {
-    const getRes = await getDocument("xmati-users", "user123");
-    console.log("retrieved doc:", getRes);
 
-    res.status(200).json({ status: "ok", getRes });
-});
+// ################ Mother(Util) APIs################
 
-app.get('/mongo-delete', versionValidation, maintenanceValidation, async (req, res) => {
-    const deleteRes = await deleteFromMongo("xmati-users", "user123");
-    console.log("deleteRes:", deleteRes);
 
-    res.status(200).json({ status: "ok", deleteRes });
-});
-
-app.get('/mongo-key-exists', versionValidation, maintenanceValidation, async (req, res) => {
-    const keyExistsRes = await mongoKeyExists("xmati-users", "user123");
-    console.log("keyExistsRes:", keyExistsRes);
-
-    res.status(200).json({ status: "ok", keyExistsRes });
-});
 
 // Endpoint for user authentication through S3
-app.post('/user-auth',
+app.post('/user-auth',      // before 
     versionValidation,
     maintenanceValidation,
     optionalAuth,
@@ -360,7 +336,7 @@ app.post('/user-auth',
     });
 
 
-app.post('/update-profile',
+app.post('/update-profile',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -403,7 +379,7 @@ app.post('/update-profile',
     });
 
 
-app.post('/update-password',
+app.post('/update-password',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -446,7 +422,7 @@ app.post('/update-password',
     });
 
 
-app.post('/update-card-info',
+app.post('/update-card-info',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -475,7 +451,7 @@ app.post('/update-card-info',
     });
 
 
-app.post('/get-card-details',
+app.post('/get-card-details',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -497,7 +473,7 @@ app.post('/get-card-details',
     });
 
 
-app.post('/send-email',
+app.post('/send-email',     // before
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -518,7 +494,7 @@ app.post('/send-email',
     });
 
 
-app.post('/save-subscription',
+app.post('/save-subscription',     // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
@@ -561,8 +537,7 @@ async function triggerLogout(userId) {
     }
 }
 
-
-app.post('/nextsub-upgrade',
+app.post('/nextsub-upgrade',   // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
@@ -584,7 +559,7 @@ app.post('/nextsub-upgrade',
     });
 
 
-app.post('/remove-nextsub',
+app.post('/remove-nextsub',   // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -606,7 +581,7 @@ app.post('/remove-nextsub',
     });
 
 
-app.post('/pro-suggestion-update',
+app.post('/pro-suggestion-update',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -628,7 +603,7 @@ app.post('/pro-suggestion-update',
     });
 
 
-app.post('/get-subscription',
+app.post('/get-subscription',   // before
     versionValidation,
     maintenanceValidation,
     optionalAuth,
@@ -651,7 +626,7 @@ app.post('/get-subscription',
     });
 
 
-app.post('/submit-enquiry',
+app.post('/submit-enquiry',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -683,7 +658,7 @@ app.post('/submit-enquiry',
     });
 
 
-app.get('/get-enquiries',
+app.get('/get-enquiries',   // mother
     authenticateToken,
     async (req, res) => {
         try {
@@ -712,7 +687,7 @@ app.get('/get-enquiries',
     });
 
 
-app.post('/get-user-enquiries',
+app.post('/get-user-enquiries',   // after 
     versionValidation,
     maintenanceValidation,
     authenticateToken,
@@ -744,7 +719,7 @@ app.post('/get-user-enquiries',
         }
     });
 
-app.post('/check-account-status',
+app.post('/check-account-status',   // after
     versionValidation,
     optionalAuth,
     validateRequiredFields(['email']),
@@ -772,7 +747,7 @@ app.post('/check-account-status',
         }
     });
 
-app.post('/set-maintenance',
+app.post('/set-maintenance',   // mother
     authenticateToken,
     validateRequiredFields(['status']),
     async (req, res) => {
@@ -789,7 +764,7 @@ app.post('/set-maintenance',
         }
     });
 
-app.post('/get-maintenance',
+app.post('/get-maintenance',  // after
     versionValidation,
     optionalAuth,
     validateRequiredFields(['email']),
@@ -806,7 +781,7 @@ app.post('/get-maintenance',
         }
     });
 
-app.post('/get-versions',
+app.post('/get-versions',   // after
     maintenanceValidation,
     optionalAuth,
     validateRequiredFields(['email']),
@@ -839,7 +814,7 @@ app.post('/get-versions',
         }
     });
 
-app.post('/set-block-status',
+app.post('/set-block-status',  // mother
     authenticateToken,
     validateRequiredFields(['email', 'status']),
     async (req, res) => {
@@ -902,7 +877,7 @@ app.post('/set-block-status',
         }
     });
 
-app.post('/get-block-status',
+app.post('/get-block-status',  // after
     versionValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -1015,7 +990,9 @@ async function triggerBlock(userId, status) {
 }
 
 
-app.get('/get-all-users-subscriptions', optionalAuth, async (req, res) => {
+app.get('/get-all-users-subscriptions',  // mother
+    optionalAuth, 
+    async (req, res) => {
     try {
         // Fetch all user keys from the 'xmati-users' bucket
         const userKeys = await getFromMongoByPrefix('xmati-users', '');
@@ -1083,7 +1060,7 @@ app.get('/get-all-users-subscriptions', optionalAuth, async (req, res) => {
 });
 
 
-app.post('/save-bot',
+app.post('/save-bot',  // after
     versionValidation,
     maintenanceValidation,
     optionalAuth,
@@ -1103,7 +1080,7 @@ app.post('/save-bot',
     });
 
 
-app.post('/get-bots',
+app.post('/get-bots',  // after
     versionValidation,
     maintenanceValidation,
     optionalAuth,
@@ -1124,7 +1101,11 @@ app.post('/get-bots',
     });
 
 
-app.get('/get-all-bots', versionValidation, maintenanceValidation, optionalAuth, async (req, res) => {
+app.get('/get-all-bots',  // after 
+    versionValidation, 
+    maintenanceValidation, 
+    optionalAuth, 
+    async (req, res) => {
     try {
 
         let result = await getFromMongoByPrefix("xmatibots", '');
@@ -1139,7 +1120,7 @@ app.get('/get-all-bots', versionValidation, maintenanceValidation, optionalAuth,
 });
 
 
-app.post('/delete-bot',
+app.post('/delete-bot',   // after
     versionValidation,
     maintenanceValidation,
     optionalAuth,
@@ -1160,7 +1141,7 @@ app.post('/delete-bot',
     });
 
 
-app.post('/check-user',
+app.post('/check-user',   // before
     maintenanceValidation,
     validateRequiredFields(['email', 'from']),
     async (req, res) => {
@@ -1181,7 +1162,7 @@ app.post('/check-user',
     });
 
 
-app.post('/send-email-otp',
+app.post('/send-email-otp',  // before
     maintenanceValidation,
     validateRequiredFields(['fullName', 'email', 'otp']),
     async (req, res) => {
@@ -1193,7 +1174,7 @@ app.post('/send-email-otp',
     });
 
 
-app.post('/forgot-pass',
+app.post('/forgot-pass',  // before
     versionValidation,
     maintenanceValidation,
     optionalAuth,
