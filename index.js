@@ -14,7 +14,7 @@ const { nextSubUpgrade } = require('./src/subscription-services/nextsub-upgrade'
 const { clearNextSubs } = require('./src/subscription-services/nextsub-clear');
 const { SaveSubscription } = require('./src/subscription-services/save-subscription');
 const { cancelSubscription } = require('./src/subscription-services/cancel-subs');
-const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo, mongoKeyExists } = require("./utils/mongo-db");
+const { saveDocument, getDocument, getFromMongoByPrefix, deleteFromMongo } = require("./utils/mongo-db");
 const { saveBot } = require('./src/bot-services/save-bot');
 const { deleteBot } = require('./src/bot-services/delete-bot');
 const { submitEnquiry } = require('./src/enquiry/submit-enquiry');
@@ -102,139 +102,7 @@ app.get('/', (req, res) => {
     res.send('Hello, Express!');
 });
 
-// // Endpoint to create a Lex bot
-// app.post('/lexbot', async (req, res) => {
-//     try {
-//         const { botName, apiUrl, template } = req.body;
-
-//         const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
-//         const id = generateRandomId(10);
-//         const name = `${botName}-${id}`;
-//         const ApiUrl = apiUrl;
-//         await createBotReplica(name, templateUrl, ApiUrl);
-//         return res.status(200).json({ message: 'Lex Bot Successfully Created!', botId: name });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// // Endpoint to talk to Lex bot
-// app.post('/lexbot/talk', async (req, res) => {
-//     try {
-//         const { input, botId } = req.body;
-//         var data = await getDatafromS3(botId + ".txt");
-
-//         var response = await startConvo(input, data.toString().split("-")[0], data.toString().split("-")[1]);    // sends the botId to start the convo with bot
-//         return res.status(200).json({ message: response });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// app.post('/azurebot', async () => {
-//     const azureTenantId = process.env.AZURE_TENANT_ID;
-//     const azureClientId = process.env.AZURE_CLIENT_ID;
-//     const azureClientSecret = process.env.AZURE_CLIENT_SECRET;
-
-//     const tenantId = azureTenantId;
-//     const clientId = azureClientId; // Service Principal Client ID
-//     const clientSecret = azureClientSecret; // Service Principal Client Secret
-
-//     try {
-//         const { botName, template } = req.body;
-
-//         const templateUrl = getTemplateFile(template.trim().replace(/ /g, "_"));
-
-//         // Authenticate using the Service Principal
-//         const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-
-//         const id = generateRandomId(10);
-//         const name = `${botName}-${id}`;           //name for the resources
-//         await createAppRegistration(credential, name);
-
-//         return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// // Endpoint to talk to azure bot
-// app.post('/azurebot/talk', async (req, res) => {
-//     try {
-//         const { input, botId } = req.body;
-//         var data = await getDatafromS3(botId + ".txt");
-
-//         var res = await startConversation(input, 'sampleId', data.toString().split("-")[0]);
-//         return res.status(200).json({ message: response });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// app.post('/oraclebot', async () => {
-//     try {
-//         const { botName, template } = req.body;
-
-//         const id = generateRandomId(10);
-//         const name = `${botName}-${id}`;           //name for the resources
-
-//         await cloningDigitalAssistant(name);
-//         return res.status(200).json({ message: 'Azure Bot Successfully Created!', botId: name });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// // Endpoint to talk to azure bot
-// app.post('/oraclebot/talk', async (req, res) => {
-//     try {
-//         const { input, botId } = req.body;
-
-//         await sendUserPrompt(input);    // sends the botId to start the convo with bot
-//         return res.status(200).json({ message: response });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ error: err });
-//     }
-// });
-
-
-// telegram webhook endpoint
-// app.post('/telegram/setwebhook', async (req, res) => {
-//     try {
-//         const { botToken, botId } = req.body;
-//         var result = await setWebhook(botToken, botId);
-
-//         if (result) {
-//             return res.status(200).json({ message: 'Telegram Integrated Successfully' });
-//         }
-//         return res.status(400).json({ message: 'Something went wrong' });
-//     }
-//     catch (err) {
-//         return res.status(400).json({ message: 'Something went wrong' });
-//     }
-// });
-
-
 // ################ Before Auth APIs ################
-
-
-// ################ After Auth APIs ################
-
-
-// ################ Mother(Util) APIs################
-
-
 
 // Endpoint for user authentication through S3
 app.post('/user-auth',      // before 
@@ -316,17 +184,6 @@ app.post('/user-auth',      // before
                     msg = "Something went wrong";
                 }
             }
-
-            // if (from === "updateBot") {
-            //     // Send email notification for bot update
-            //     status = 200;
-            //     success = true;
-            //     msg = "Bot updated successfully";
-            //     dbData = {};
-            //     const botUpdateEmailTemplate = botUpdateConfirmationEmail(data.fullName, data.botName, data.botDescription);
-            //     sendEmail(data.email, null, null, botUpdateEmailTemplate.subject, botUpdateEmailTemplate.body);
-            // }
-
             return res.status(status).json({ success, msg, dbData });
         }
         catch (err) {
@@ -335,6 +192,129 @@ app.post('/user-auth',      // before
         }
     });
 
+app.post('/send-email',     // before
+    versionValidation,
+    maintenanceValidation,
+    authenticateToken,
+    validateRequiredFields(['to', 'subject', 'content']),
+    async (req, res) => {
+        try {
+            const { to, cc, bcc, subject, content } = req.body;
+
+            let result = await sendEmail(to, cc, bcc, subject, content);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to send email' });
+            }
+            // Email sent successfully
+            return res.status(200).json({ status: true, message: 'Email sent successfully!' });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Failed to send email' });
+        }
+    });
+
+app.post('/check-user',   // before
+    maintenanceValidation,
+    validateRequiredFields(['email', 'from']),
+    async (req, res) => {
+        try {
+            const { email, from } = req.body;
+
+            let result = await checkUser(email, from);
+
+            if (result.status) {
+                return res.status(200).json({ status: true, message: 'User exists', otp: result.otp });
+            } else {
+                return res.status(400).json({ status: false, message: 'No User' });
+            }
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
+        }
+    });
+
+app.post('/send-email-otp',  // before
+    maintenanceValidation,
+    validateRequiredFields(['fullName', 'email', 'otp']),
+    async (req, res) => {
+        const { fullName, email, otp } = req.body;
+
+        const emailTemplate = registrationEmailVerificationOtpEmail(fullName, otp);
+        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
+        res.status(200).json({ status: true, message: 'OTP email sent successfully' });
+    });
+
+app.post('/forgot-pass',  // before
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['email', 'password']),
+    async (req, res) => {
+        try {
+            const { email, password } = req.body;
+
+            let result = await forgotPass(email, password);
+            if (!result) {
+                return res.status(400).json({ status: false, msg: 'Failed to update password' });
+            }
+
+            return res.status(200).json({ status: true, msg: 'Password updated successfully' });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).send('Something went wrong while updating the password');
+        }
+    });
+
+app.post('/get-subscription',   // before
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['key']),
+    async (req, res) => {
+        try {
+            const { key } = req.body;
+
+            let result = await getDocument("xmati-subscriber", `${key}`);
+            let data = result;
+            if (!result) {
+                return res.status(400).json({ status: false, msg: 'Failed to get user subscription' });
+            }
+
+            return res.status(200).json({ status: true, msg: 'User Subscription received successfully', data });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
+        }
+    });
+
+app.post('/create-setup-intent',   // before
+    maintenanceValidation,
+    validateRequiredFields(['email', 'customerId']),
+    async (req, res) => {
+        const { email, customerId } = req.body;
+
+        try {
+            let customer = null;
+            if (customerId === '-') {
+                customer = await getOrCreateCustomerByEmail(email);
+            } else {
+                customer = customerId;
+            }
+
+            const setupIntent = await stripe.setupIntents.create({
+                customer: customer.id,
+                usage: 'off_session',
+            });
+
+            res.json({ clientSecret: setupIntent.client_secret, customerId: customer.id });
+        } catch (err) {
+            console.error('Error creating SetupIntent:', err.message);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+
+
+// ################ After Auth APIs ################
 
 app.post('/update-profile',   // after
     versionValidation,
@@ -378,7 +358,6 @@ app.post('/update-profile',   // after
         }
     });
 
-
 app.post('/update-password',   // after
     versionValidation,
     maintenanceValidation,
@@ -421,7 +400,6 @@ app.post('/update-password',   // after
         }
     });
 
-
 app.post('/update-card-info',   // after
     versionValidation,
     maintenanceValidation,
@@ -450,7 +428,6 @@ app.post('/update-card-info',   // after
         }
     });
 
-
 app.post('/get-card-details',   // after
     versionValidation,
     maintenanceValidation,
@@ -472,27 +449,307 @@ app.post('/get-card-details',   // after
         }
     });
 
-
-app.post('/send-email',     // before
+app.post('/pro-suggestion-update',   // after
     versionValidation,
     maintenanceValidation,
     authenticateToken,
-    validateRequiredFields(['to', 'subject', 'content']),
+    validateRequiredFields(['email', 'plan', 'duration', 'price']),
     async (req, res) => {
         try {
-            const { to, cc, bcc, subject, content } = req.body;
+            const { email, plan, duration, price } = req.body;
 
-            let result = await sendEmail(to, cc, bcc, subject, content);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to send email' });
+            let result = await proSuggestionUpgrade(email, plan, duration, price);
+
+            if (result.success === true) {
+                return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
             }
-            // Email sent successfully
-            return res.status(200).json({ status: true, message: 'Email sent successfully!' });
+            return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
         } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Failed to send email' });
+            console.log(error);
+            return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
         }
     });
 
+app.post('/submit-enquiry',   // after
+    versionValidation,
+    maintenanceValidation,
+    authenticateToken,
+    validateRequiredFields(['email', 'enquiry']),
+    async (req, res) => {
+        const { email, enquiry } = req.body;
+
+        try {
+            let result = await submitEnquiry(email, enquiry);
+
+            if (!result) {
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Failed to submit enquiry'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                msg: 'Enquiry submitted successfully',
+            });
+        } catch (error) {
+            console.error('Error submitting enquiry:', error);
+            return res.status(500).json({
+                success: false,
+                msg: 'Something went wrong while submitting the enquiry'
+            });
+        }
+    });
+
+app.post('/get-user-enquiries',   // after 
+    versionValidation,
+    maintenanceValidation,
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            let result = await getUserEnquiries(email);
+
+            if (result === false) {
+                return res.status(400).json({
+                    success: false,
+                    msg: 'Failed to retrieve user enquiries'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                msg: 'User enquiries retrieved successfully',
+                data: result,
+            });
+        } catch (error) {
+            console.error('Error retrieving user enquiries:', error);
+            return res.status(500).json({
+                success: false,
+                msg: 'Something went wrong while retrieving user enquiries'
+            });
+        }
+    });
+
+app.post('/check-account-status',   // after
+    versionValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email, isMother = false } = req.body;
+        try {
+            // Maintenance status check
+            let data = await getMaintenance();
+            triggerMaintenanceStatus(email, data.maintenance);
+
+            // Block status check
+            const userData = await getDocument("xmati-users", email.replace(/_util/g, ''));
+            triggerBlock(email, userData.blocked || false);
+
+            // Version check if the app is not Mother
+            if (!isMother) {
+                const result = await getVersions();
+                triggerVersionMismatch(email, result.data['child-node']);
+            }
+
+            res.status(200);
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ status: false, msg: 'Something went wrong while checking account status' });
+        }
+    });
+
+app.post('/get-maintenance',  // after
+    versionValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        let data = await getMaintenance();
+
+        if (data.status) {
+            triggerMaintenanceStatus(email, data.maintenance);
+            return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
+        }
+        else {
+            return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
+        }
+    });
+
+app.post('/get-versions',   // after
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        const { email } = req.body;
+        try {
+            const result = await getVersions();
+            triggerVersionMismatch(email, result.data['child-node']);
+            console.log(result.data['child-node'])
+            if (result.status) {
+
+                return res.status(200).json({
+                    success: true,
+                    message: result.message,
+                    data: result.data
+                });
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: result.message
+                });
+            }
+        } catch (error) {
+            console.error('Error in get-child-node-version endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while retrieving child-node version',
+                error: error.message
+            });
+        }
+    });
+
+async function triggerVersionMismatch(userId, version) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendVersionStatus(userId, version);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
+
+app.post('/save-bot',  // after
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
+    async (req, res) => {
+        try {
+            const { fullName, organizationName, key, data, from } = req.body;
+
+            var result = await saveBot(fullName, organizationName, key, data, from);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to save bot' });
+            }
+            return res.status(200).json({ status: true, message: 'Bot saved successfully' });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
+        }
+    });
+
+app.post('/get-bots',  // after
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
+        }
+    });
+
+app.get('/get-all-bots',  // after 
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    async (req, res) => {
+        try {
+
+            let result = await getFromMongoByPrefix("xmatibots", '');
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
+        }
+    });
+
+app.post('/delete-bot',   // after
+    versionValidation,
+    maintenanceValidation,
+    optionalAuth,
+    validateRequiredFields(['fullName', 'key']),
+    async (req, res) => {
+        try {
+            const { fullName, key } = req.body;
+
+            let result = await deleteBot(fullName, key);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to delete bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
+        }
+    });
+
+app.post('/get-block-status',  // after
+    versionValidation,
+    authenticateToken,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Check if user exists
+            const userData = await getDocument("xmati-users", email);
+            if (!userData) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: `User is ${userData.blocked ? 'blocked' : 'unblocked'}`,
+                data: userData.blocked || false
+            });
+
+        } catch (error) {
+            console.error('Error in set-block-status endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while updating user block status',
+                error: error.message
+            });
+        }
+    });
+
+
+
+// ################ Mother(Util) APIs################
 
 app.post('/save-subscription',     // mother
     maintenanceValidation,
@@ -558,7 +815,6 @@ app.post('/nextsub-upgrade',   // mother
         }
     });
 
-
 app.post('/remove-nextsub',   // mother
     maintenanceValidation,
     authenticateToken,
@@ -579,84 +835,6 @@ app.post('/remove-nextsub',   // mother
             return res.status(500).json({ status: false, message: 'Something went wrong while removing next subscription' });
         }
     });
-
-
-app.post('/pro-suggestion-update',   // after
-    versionValidation,
-    maintenanceValidation,
-    authenticateToken,
-    validateRequiredFields(['email', 'plan', 'duration', 'price']),
-    async (req, res) => {
-        try {
-            const { email, plan, duration, price } = req.body;
-
-            let result = await proSuggestionUpgrade(email, plan, duration, price);
-
-            if (result.success === true) {
-                return res.status(200).json({ success: true, message: 'Subscription upgraded successfully' });
-            }
-            return res.status(400).json({ success: false, message: result.msg || 'Failed to upgrade subscription' });
-        } catch (error) {
-            console.log(error);
-            return res.status(500).json({ status: false, message: 'Something went wrong while upgrading the subscription inside users S3' });
-        }
-    });
-
-
-app.post('/get-subscription',   // before
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['key']),
-    async (req, res) => {
-        try {
-            const { key } = req.body;
-
-            let result = await getDocument("xmati-subscriber", `${key}`);
-            let data = result;
-            if (!result) {
-                return res.status(400).json({ status: false, msg: 'Failed to get user subscription' });
-            }
-
-            return res.status(200).json({ status: true, msg: 'User Subscription received successfully', data });
-        } catch (error) {
-            console.log(error);
-            return res.status(500).json({ status: false, msg: 'Something went wrong while getting the user subscription' });
-        }
-    });
-
-
-app.post('/submit-enquiry',   // after
-    versionValidation,
-    maintenanceValidation,
-    authenticateToken,
-    validateRequiredFields(['email', 'enquiry']),
-    async (req, res) => {
-        const { email, enquiry } = req.body;
-
-        try {
-            let result = await submitEnquiry(email, enquiry);
-
-            if (!result) {
-                return res.status(400).json({
-                    success: false,
-                    msg: 'Failed to submit enquiry'
-                });
-            }
-
-            return res.status(200).json({
-                success: true,
-                msg: 'Enquiry submitted successfully',
-            });
-        } catch (error) {
-            console.error('Error submitting enquiry:', error);
-            return res.status(500).json({
-                success: false,
-                msg: 'Something went wrong while submitting the enquiry'
-            });
-        }
-    });
-
 
 app.get('/get-enquiries',   // mother
     authenticateToken,
@@ -686,67 +864,6 @@ app.get('/get-enquiries',   // mother
         }
     });
 
-
-app.post('/get-user-enquiries',   // after 
-    versionValidation,
-    maintenanceValidation,
-    authenticateToken,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        try {
-            const { email } = req.body;
-
-            let result = await getUserEnquiries(email);
-
-            if (result === false) {
-                return res.status(400).json({
-                    success: false,
-                    msg: 'Failed to retrieve user enquiries'
-                });
-            }
-
-            return res.status(200).json({
-                success: true,
-                msg: 'User enquiries retrieved successfully',
-                data: result,
-            });
-        } catch (error) {
-            console.error('Error retrieving user enquiries:', error);
-            return res.status(500).json({
-                success: false,
-                msg: 'Something went wrong while retrieving user enquiries'
-            });
-        }
-    });
-
-app.post('/check-account-status',   // after
-    versionValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        const { email, isMother = false } = req.body;
-        try {
-            // Maintenance status check
-            let data = await getMaintenance();
-            triggerMaintenanceStatus(email, data.maintenance);
-
-            // Block status check
-            const userData = await getDocument("xmati-users", email.replace(/_util/g, ''));
-            triggerBlock(email, userData.blocked || false);
-
-            // Version check if the app is not Mother
-            if (!isMother) {
-                const result = await getVersions();
-                triggerVersionMismatch(email, result.data['child-node']);
-            }
-
-            res.status(200);
-        } catch (error) {
-            console.log(error);
-            return res.status(500).json({ status: false, msg: 'Something went wrong while checking account status' });
-        }
-    });
-
 app.post('/set-maintenance',   // mother
     authenticateToken,
     validateRequiredFields(['status']),
@@ -761,56 +878,6 @@ app.post('/set-maintenance',   // mother
         } catch (error) {
             console.log(error);
             return res.status(500).json({ status: false, msg: 'Something went wrong while updating the maintenance status' });
-        }
-    });
-
-app.post('/get-maintenance',  // after
-    versionValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        const { email } = req.body;
-        let data = await getMaintenance();
-
-        if (data.status) {
-            triggerMaintenanceStatus(email, data.maintenance);
-            return res.status(200).json({ status: true, msg: 'Maintenance status retrieved successfully', data: data.maintenance });
-        }
-        else {
-            return res.status(500).json({ status: false, msg: 'Something went wrong while retrieving the maintenance status', data: true }); // by default keep it as true
-        }
-    });
-
-app.post('/get-versions',   // after
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        const { email } = req.body;
-        try {
-            const result = await getVersions();
-            triggerVersionMismatch(email, result.data['child-node']);
-            console.log(result.data['child-node'])
-            if (result.status) {
-
-                return res.status(200).json({
-                    success: true,
-                    message: result.message,
-                    data: result.data
-                });
-            } else {
-                return res.status(404).json({
-                    success: false,
-                    message: result.message
-                });
-            }
-        } catch (error) {
-            console.error('Error in get-child-node-version endpoint:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Something went wrong while retrieving child-node version',
-                error: error.message
-            });
         }
     });
 
@@ -877,66 +944,6 @@ app.post('/set-block-status',  // mother
         }
     });
 
-app.post('/get-block-status',  // after
-    versionValidation,
-    authenticateToken,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        try {
-            const { email } = req.body;
-
-            // Check if user exists
-            const userData = await getDocument("xmati-users", email);
-            if (!userData) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'User not found'
-                });
-            }
-
-            return res.status(200).json({
-                success: true,
-                message: `User is ${userData.blocked ? 'blocked' : 'unblocked'}`,
-                data: userData.blocked || false
-            });
-
-        } catch (error) {
-            console.error('Error in set-block-status endpoint:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Something went wrong while updating user block status',
-                error: error.message
-            });
-        }
-    });
-
-
-async function triggerVersionMismatch(userId, version) {
-    try {
-        // Send force block message using userId as clientId
-        const success = wsManager.sendVersionStatus(userId, version);
-
-        if (success) {
-            return {
-                success: true,
-                message: `Force block signal sent to user ${userId} successfully`
-            };
-        } else {
-            return {
-                success: false,
-                message: `User ${userId} not found or not connected via WebSocket`
-            };
-        }
-    } catch (error) {
-        console.error('Error triggering logout:', error);
-        return {
-            success: false,
-            message: 'Failed to trigger logout',
-            error: error.message
-        };
-    }
-}
-
 async function triggerMaintenanceStatus(userId, status) {
     try {
         // Send force block message using userId as clientId
@@ -989,212 +996,74 @@ async function triggerBlock(userId, status) {
     }
 }
 
-
 app.get('/get-all-users-subscriptions',  // mother
-    optionalAuth, 
+    optionalAuth,
     async (req, res) => {
-    try {
-        // Fetch all user keys from the 'xmati-users' bucket
-        const userKeys = await getFromMongoByPrefix('xmati-users', '');
+        try {
+            // Fetch all user keys from the 'xmati-users' bucket
+            const userKeys = await getFromMongoByPrefix('xmati-users', '');
 
-        if (!userKeys || userKeys.length === 0) {
-            return res.status(404).json({ success: false, message: 'No users found' });
-        }
+            if (!userKeys || userKeys.length === 0) {
+                return res.status(404).json({ success: false, message: 'No users found' });
+            }
 
-        const usersWithSubscriptions = [];
+            const usersWithSubscriptions = [];
 
-        for (const userKey of userKeys) {
-            try {
-                // Fetch user data
-                const userDataStream = await getDocument('xmati-users', userKey.key);
+            for (const userKey of userKeys) {
+                try {
+                    // Fetch user data
+                    const userDataStream = await getDocument('xmati-users', userKey.key);
 
-                // Fetch subscription data
-                const subscriptionDataStream = await getDocument('xmati-subscriber', userKey.key);
+                    // Fetch subscription data
+                    const subscriptionDataStream = await getDocument('xmati-subscriber', userKey.key);
 
 
-                // Fetch bots for the user
-                const botKeys = await getFromMongoByPrefix('xmatibots', userKey.key);
-                const botsData = [];
+                    // Fetch bots for the user
+                    const botKeys = await getFromMongoByPrefix('xmatibots', userKey.key);
+                    const botsData = [];
 
-                for (const botKey of botKeys) {
-                    try {
-                        const id = botKey.key.split('_')[1]
+                    for (const botKey of botKeys) {
+                        try {
+                            const id = botKey.key.split('_')[1]
 
-                        botsData.push({
-                            id: id,
-                            name: id.split('-')[1],
-                        });
-                    } catch (botError) {
-                        console.error(`Error processing bot key ${botKey.key}:`, botError.message);
-                        continue; // Skip this bot and move to the next
+                            botsData.push({
+                                id: id,
+                                name: id.split('-')[1],
+                            });
+                        } catch (botError) {
+                            console.error(`Error processing bot key ${botKey.key}:`, botError.message);
+                            continue; // Skip this bot and move to the next
+                        }
                     }
+
+                    // Remove unwanted keys from userData
+                    // eslint-disable-next-line no-unused-vars
+                    const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userDataStream;
+
+
+                    // Combine user and subscription data
+                    usersWithSubscriptions.push({
+                        email: userKey.key, // Extract email from key
+                        userData: filteredUserData,
+                        subscriptionData: subscriptionDataStream,
+                        botsData
+                    });
+                } catch (error) {
+                    console.error(`Error processing user key ${userKey.key}:`, error.message);
+                    continue; // Skip this user and move to the next
                 }
-
-                // Remove unwanted keys from userData
-                // eslint-disable-next-line no-unused-vars
-                const { botIdList, filteredBots, numberOfBots, ...filteredUserData } = userDataStream;
-
-
-                // Combine user and subscription data
-                usersWithSubscriptions.push({
-                    email: userKey.key, // Extract email from key
-                    userData: filteredUserData,
-                    subscriptionData: subscriptionDataStream,
-                    botsData
-                });
-            } catch (error) {
-                console.error(`Error processing user key ${userKey.key}:`, error.message);
-                continue; // Skip this user and move to the next
             }
-        }
 
-        return res.status(200).json({
-            success: true,
-            message: 'Users and subscriptions retrieved successfully',
-            data: usersWithSubscriptions,
-        });
-    } catch (error) {
-        console.error('Error fetching users and subscriptions:', error.message);
-        return res.status(500).json({ success: false, message: 'Something went wrong', error: error.message });
-    }
-});
-
-
-app.post('/save-bot',  // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
-    async (req, res) => {
-        try {
-            const { fullName, organizationName, key, data, from } = req.body;
-
-            var result = await saveBot(fullName, organizationName, key, data, from);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to save bot' });
-            }
-            return res.status(200).json({ status: true, message: 'Bot saved successfully' });
+            return res.status(200).json({
+                success: true,
+                message: 'Users and subscriptions retrieved successfully',
+                data: usersWithSubscriptions,
+            });
         } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
+            console.error('Error fetching users and subscriptions:', error.message);
+            return res.status(500).json({ success: false, message: 'Something went wrong', error: error.message });
         }
     });
-
-
-app.post('/get-bots',  // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        try {
-            const { email } = req.body;
-
-            let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to get bot' });
-            }
-
-            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
-        }
-    });
-
-
-app.get('/get-all-bots',  // after 
-    versionValidation, 
-    maintenanceValidation, 
-    optionalAuth, 
-    async (req, res) => {
-    try {
-
-        let result = await getFromMongoByPrefix("xmatibots", '');
-        if (!result) {
-            return res.status(400).json({ status: false, error: 'Failed to get bot' });
-        }
-
-        return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
-    } catch (error) {
-        return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
-    }
-});
-
-
-app.post('/delete-bot',   // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['fullName', 'key']),
-    async (req, res) => {
-        try {
-            const { fullName, key } = req.body;
-
-            let result = await deleteBot(fullName, key);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to delete bot' });
-            }
-
-            return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
-        }
-    });
-
-
-app.post('/check-user',   // before
-    maintenanceValidation,
-    validateRequiredFields(['email', 'from']),
-    async (req, res) => {
-        try {
-            const { email, from } = req.body;
-
-            let result = await checkUser(email, from);
-
-            if (result.status) {
-                return res.status(200).json({ status: true, message: 'User exists', otp: result.otp });
-            } else {
-                return res.status(400).json({ status: false, message: 'No User' });
-            }
-        } catch (error) {
-            console.log(error);
-            return res.status(500).json({ status: false, error: 'Something went wrong while checking the user' });
-        }
-    });
-
-
-app.post('/send-email-otp',  // before
-    maintenanceValidation,
-    validateRequiredFields(['fullName', 'email', 'otp']),
-    async (req, res) => {
-        const { fullName, email, otp } = req.body;
-
-        const emailTemplate = registrationEmailVerificationOtpEmail(fullName, otp);
-        await sendEmail(email, null, null, emailTemplate.subject, emailTemplate.body);
-        res.status(200).json({ status: true, message: 'OTP email sent successfully' });
-    });
-
-
-app.post('/forgot-pass',  // before
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['email', 'password']),
-    async (req, res) => {
-        try {
-            const { email, password } = req.body;
-
-            let result = await forgotPass(email, password);
-            if (!result) {
-                return res.status(400).json({ status: false, msg: 'Failed to update password' });
-            }
-
-            return res.status(200).json({ status: true, msg: 'Password updated successfully' });
-        } catch (error) {
-            console.log(error);
-            return res.status(500).send('Something went wrong while updating the password');
-        }
-    });
-
 
 // app.post('/gemini-llm', async (req, res) => {
 //     try {
@@ -1302,8 +1171,7 @@ app.post('/forgot-pass',  // before
 // });
 
 
-
-app.post('/attach-payment-method',
+app.post('/attach-payment-method', // mother 
     maintenanceValidation,
     validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
     async (req, res) => {
@@ -1347,35 +1215,7 @@ app.post('/attach-payment-method',
         }
     });
 
-
-app.post('/create-setup-intent',
-    maintenanceValidation,
-    validateRequiredFields(['email', 'customerId']),
-    async (req, res) => {
-        const { email, customerId } = req.body;
-
-        try {
-            let customer = null;
-            if (customerId === '-') {
-                customer = await getOrCreateCustomerByEmail(email);
-            } else {
-                customer = customerId;
-            }
-
-            const setupIntent = await stripe.setupIntents.create({
-                customer: customer.id,
-                usage: 'off_session',
-            });
-
-            res.json({ clientSecret: setupIntent.client_secret, customerId: customer.id });
-        } catch (err) {
-            console.error('Error creating SetupIntent:', err.message);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-
-app.post('/create-payment-intent',
+app.post('/create-payment-intent',  // mother 
     maintenanceValidation,
     optionalAuth,
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
@@ -1398,70 +1238,7 @@ app.post('/create-payment-intent',
         }
     });
 
-//     try {
-//         const { clientSecret, cardDetails, subscription, duration, amount } = req.body;
-//         let response = await makePayment(clientSecret, cardDetails, subscription, duration);
-
-//         if (!response.success) {
-//             return res.status(400).json({ success: false, error: response.error || 'Failed to make payment' });
-//         }
-
-//         return res.status(200).json({ success: true, message: 'Payment successful', paymentIntent: response.paymentIntent });
-//     } catch (error) {
-//         console.error('Error making payment:', error.message);
-//         return res.status(500).json({ success: false, error: 'Failed to make payment' });
-//     }
-// });
-
-
-// app.post('/create-stripe-subscription', async (req, res) => {
-//     try {
-//         const { customerId, subscription, duration } = req.body;
-
-//         // Validate required fields
-//         if (!customerId || !subscription || !duration) {
-//             return res.status(400).json({ success: false, message: 'Customer ID, subscription, and duration are required' });
-//         }
-
-//         // Map subscription and duration to priceId
-//         const priceKey = `STRIPE_${subscription.toUpperCase()}-${duration.toUpperCase()}`;
-//         console.log('Price Key:', priceKey.trim());
-//         const priceId = process.env[priceKey.trim()];
-
-//         console.log('Creating subscription with priceId:', priceId);
-//         if (!priceId) {
-//             return res.status(400).json({ success: false, message: `Invalid subscription or duration: ${subscription}, ${duration}` });
-//         }
-
-//         // Create the subscription
-//         const subscriptionResponse = await stripe.subscriptions.create({
-//             customer: customerId,
-//             items: [{ price: priceId }],
-//             payment_behavior: 'default_incomplete',
-//             metadata: {
-//                 subscription,
-//                 duration
-//             },
-//             expand: ['latest_invoice.payment_intent'], // Expand payment intent for additional details
-//         });
-
-//         if (!subscriptionResponse) {
-//             return res.status(400).json({ success: false, message: 'Failed to create subscription' });
-//         }
-
-//         // Return subscription details
-//         return res.status(200).json({
-//             success: true,
-//             subscriptionId: subscriptionResponse.id,
-//         });
-//     } catch (error) {
-//         console.error('Error creating subscription:', error.message);
-//         return res.status(500).json({ success: false, message: error.message });
-//     }
-// });
-
-
-app.post('/refund-amount',
+app.post('/refund-amount',  // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'amount']),
@@ -1480,8 +1257,7 @@ app.post('/refund-amount',
         }
     });
 
-
-app.post('/failed-payment',
+app.post('/failed-payment',   // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'name', 'subscription', 'amount']),
@@ -1503,8 +1279,7 @@ app.post('/failed-payment',
         }
     });
 
-
-app.post('/get-stripe-transactions',
+app.post('/get-stripe-transactions',  // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -1522,123 +1297,9 @@ app.post('/get-stripe-transactions',
             console.error(err);
             return res.status(400).json({ error: 'Failed to retrieve transactions' });
         }
-    })
+    });
 
-
-// function formatToISODate(date) {
-//     const d = new Date(date)
-//     const year = d.getFullYear()
-//     const month = String(d.getMonth() + 1).padStart(2, '0') // 0-based
-//     const day = String(d.getDate()).padStart(2, '0')
-
-//     return `${year}-${month}-${day}`
-// }
-
-// function getMonthDifference(startDate, endDate) {
-//     const start = new Date(startDate);
-//     const end = new Date(endDate);
-//     const years = end.getFullYear() - start.getFullYear();
-//     const months = end.getMonth() - start.getMonth();
-//     const totalMonths = years * 12 + months;
-
-//     return totalMonths;
-// }
-
-// function calculateRefundDetails(startDate, expiryDate, totalAmount, subs) {
-//     try {
-//         const currentDate = new Date();
-//         const start = new Date(formatToISODate(startDate));
-//         const expiry = new Date(formatToISODate(expiryDate));
-
-//         // Total number of months in the subscription
-//         let totalMonths = getMonthDifference(start, expiry);
-
-//         // Find the current cycle number (0-based)
-//         let currentCycleStart = new Date(start);
-//         let cycleNumber = 0;
-//         while (currentCycleStart <= currentDate) {
-//             const nextCycleStart = new Date(currentCycleStart);
-//             nextCycleStart.setMonth(nextCycleStart.getMonth() + 1);
-
-//             if (currentDate < nextCycleStart) {
-//                 break;
-//             }
-//             currentCycleStart = nextCycleStart;
-//             cycleNumber++;
-//         }
-
-//         const tentativeCycleEnd = new Date(currentCycleStart);
-//         tentativeCycleEnd.setMonth(tentativeCycleEnd.getMonth() + 1);
-//         const currentCycleEnd = tentativeCycleEnd > expiry ? expiry : tentativeCycleEnd;
-
-//         // Remaining days in the current cycle
-//         const msInDay = 1000 * 60 * 60 * 24;
-//         const daysRemainingInCycle = Math.ceil((currentCycleEnd - currentDate) / msInDay);
-
-//         // Full months remaining after the current cycle
-//         const usedMonth = cycleNumber + 1
-//         let remainingMonths = totalMonths - usedMonth; // +1 to exclude current cycle
-
-//         // Refund only for full months remaining
-//         const monthlyAmount = (subs === 'Professional') ? 100 : 18 //totalAmount / totalMonths
-//         const usedAmount = usedMonth * monthlyAmount
-//         const remainingAmount = totalAmount - usedAmount
-//         const refundAmount = Math.max(0, remainingAmount)
-
-
-//         return {
-//             status: true,
-//             daysRemainingInCycle,
-//             remainingMonths,
-//             refundAmount: refundAmount.toFixed(2),
-//         };
-//     } catch (error) {
-//         console.error('Error calculating refund details:', error.message);
-//         return { status: false, message: 'Failed to calculate refund details', error: error.message };
-//     }
-// }
-
-//     const { email, cardDetails } = req.body;
-
-//     try {
-//         // Get or create a Stripe customer using the email
-//         const customer = await getOrCreateCustomerByEmail(email);
-
-//         if (!customer) {
-//             return res.status(400).json({ success: false, message: 'Failed to create or retrieve customer' });
-//         }
-
-//         // Create a payment method
-//         const paymentMethod = await stripe.paymentMethods.create({
-//             type: 'card',
-//             card: {
-//                 number: cardDetails.number,
-//                 exp_month: cardDetails.exp_month,
-//                 exp_year: cardDetails.exp_year,
-//                 cvc: cardDetails.cvc,
-//             },
-//         });
-
-//         // Attach the payment method to the customer
-//         await stripe.paymentMethods.attach(paymentMethod.id, { customer: customer.id });
-
-//         // Set the payment method as the default for the customer
-//         await stripe.customers.update(customer.id, {
-//             invoice_settings: { default_payment_method: paymentMethod.id },
-//         });
-
-//         res.json({ success: true, customerId: customer.id, paymentMethodId: paymentMethod.id });
-//     } catch (error) {
-//         console.error('Error attaching payment method:', error.message);
-//         res.status(500).json({ success: false, message: error.message });
-//     }
-// });
-
-
-// Example usage in the refund API
-
-
-app.post('/trial-cancellation',
+app.post('/trial-cancellation',   // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email']),
@@ -1657,8 +1318,7 @@ app.post('/trial-cancellation',
         }
     });
 
-
-app.post('/downgrade-subscription',
+app.post('/downgrade-subscription',  // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
@@ -1679,8 +1339,7 @@ app.post('/downgrade-subscription',
         }
     });
 
-
-app.post('/cancel-subscription',
+app.post('/cancel-subscription',  // mother
     maintenanceValidation,
     authenticateToken,
     validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
@@ -1704,8 +1363,7 @@ app.post('/cancel-subscription',
         }
     });
 
-
-app.post('/download-csv',
+app.post('/download-csv',  // mother
     maintenanceValidation,
     authenticateToken,
     (req, res) => {
@@ -1724,8 +1382,7 @@ app.post('/download-csv',
         }
     });
 
-
-app.post('/rollback-registration',
+app.post('/rollback-registration',  // mother
     maintenanceValidation,
     optionalAuth,
     validateRequiredFields(['email']),
@@ -1782,123 +1439,6 @@ app.post('/rollback-registration',
     });
 
 
-// WebSocket API endpoints
-// app.get('/websocket/stats',
-//     versionValidation,
-//     optionalAuth,
-//     async (req, res) => {
-//         try {
-//             const stats = wsManager.getStats();
-//             return res.status(200).json({
-//                 success: true,
-//                 message: 'WebSocket stats retrieved successfully',
-//                 data: stats
-//             });
-//         } catch (error) {
-//             console.error('Error getting WebSocket stats:', error);
-//             return res.status(500).json({
-//                 success: false,
-//                 message: 'Failed to get WebSocket stats',
-//                 error: error.message
-//             });
-//         }
-//     });
-
-
-// app.post('/websocket/send-message-to-user',
-//     versionValidation,
-//     authenticateToken,
-//     validateRequiredFields(['userId', 'message']),
-//     async (req, res) => {
-//         try {
-//             const { userId, message } = req.body;
-
-//             const success = wsManager.sendMessageToUser(userId, message);
-
-//             if (success) {
-//                 return res.status(200).json({
-//                     success: true,
-//                     message: `Message sent to user ${userId} successfully`
-//                 });
-//             } else {
-//                 return res.status(404).json({
-//                     success: false,
-//                     message: `User ${userId} not found or not connected`
-//                 });
-//             }
-//         } catch (error) {
-//             console.error('Error sending message to user:', error);
-//             return res.status(500).json({
-//                 success: false,
-//                 message: 'Failed to send message to user',
-//                 error: error.message
-//             });
-//         }
-//     });
-
-
-// app.post('/websocket/send-message-to-room',
-//     versionValidation,
-//     authenticateToken,
-//     validateRequiredFields(['room', 'message']),
-//     async (req, res) => {
-//         try {
-//             const { room, message } = req.body;
-
-//             wsManager.sendMessageToRoom(room, message);
-
-//             return res.status(200).json({
-//                 success: true,
-//                 message: `Message sent to room ${room} successfully`
-//             });
-//         } catch (error) {
-//             console.error('Error sending message to room:', error);
-//             return res.status(500).json({
-//                 success: false,
-//                 message: 'Failed to send message to room',
-//                 error: error.message
-//             });
-//         }
-//     });
-
-
-// app.post('/websocket/broadcast',
-//     versionValidation,
-//     authenticateToken,
-//     validateRequiredFields(['message']),
-//     async (req, res) => {
-//         try {
-//             const { message } = req.body;
-
-//             wsManager.broadcastToAll({
-//                 type: 'server_broadcast',
-//                 message: message,
-//                 timestamp: new Date().toISOString()
-//             });
-
-//             return res.status(200).json({
-//                 success: true,
-//                 message: 'Broadcast message sent successfully'
-//             });
-//         } catch (error) {
-//             console.error('Error broadcasting message:', error);
-//             return res.status(500).json({
-//                 success: false,
-//                 message: 'Failed to broadcast message',
-//                 error: error.message
-//             });
-//         }
-//     });
-
-
-// function streamToString(stream) {
-//     return new Promise((resolve, reject) => {
-//         const chunks = [];
-//         stream.on("data", (chunk) => chunks.push(chunk));
-//         stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-//         stream.on("error", reject);
-//     });
-// }
 
 //cron job to send expiry email every day at 10:00 PM
 cron.schedule('25 18 * * *', async () => {
