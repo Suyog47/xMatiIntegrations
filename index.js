@@ -749,19 +749,22 @@ app.post('/check-account-status',
     optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
-        const { email } = req.body;
+        const { email, isMother = false } = req.body;
         try {
             // Maintenance status check
             let data = await getMaintenance();
             triggerMaintenanceStatus(email, data.maintenance);
 
             // Block status check
-            const userData = await getDocument("xmati-users", email);
+            const userData = await getDocument("xmati-users", email.replace(/_util/g, ''));
             triggerBlock(email, userData.blocked || false);
 
-            // Version check
-            const result = await getVersions();
-            triggerVersionMismatch(email, result.data['child-node']);
+            // Version check if the app is not Mother
+            if (!isMother) {
+                const result = await getVersions();
+                triggerVersionMismatch(email, result.data['child-node']);
+            }
+
             res.status(200);
         } catch (error) {
             console.log(error);
@@ -1722,23 +1725,23 @@ app.post('/cancel-subscription',
 
 
 app.post('/download-csv',
-     maintenanceValidation, 
-     authenticateToken, 
-     (req, res) => {
-    try {
-        const { data, email } = req.body;
+    maintenanceValidation,
+    authenticateToken,
+    (req, res) => {
+        try {
+            const { data, email } = req.body;
 
-        let result = downloadCSV(data, email, res);
-        if (!result) {
-            return res.status(400).json({ success: false, message: 'Failed to generate CSV' });
+            let result = downloadCSV(data, email, res);
+            if (!result) {
+                return res.status(400).json({ success: false, message: 'Failed to generate CSV' });
+            }
+
+            // res.status(200).send('success');
+        } catch (err) {
+            console.error(err);
+            res.status(500).send('Failed to generate CSV');
         }
-
-        // res.status(200).send('success');
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Failed to generate CSV');
-    }
-});
+    });
 
 
 app.post('/rollback-registration',

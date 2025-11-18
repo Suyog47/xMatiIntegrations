@@ -153,7 +153,7 @@ class WebSocketManager {
 
     for (const [clientId, client] of this.clients.entries()) {
       // Skip the service user during broadcast
-      if (clientId === 'xmatiservice@gmail.com') {
+      if (clientId === 'xmatiservice@gmail.com' || clientId === 'xmatiservice@gmail.com_util') {
         console.log('Skipping MAINTENANCE_STATUS broadcast for service user xmatiservice@gmail.com');
         continue;
       }
