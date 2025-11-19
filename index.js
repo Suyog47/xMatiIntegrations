@@ -81,10 +81,6 @@ app.use(disableTimeout);
 app.use(express.json({ limit: '1gb' }));
 app.use(express.urlencoded({ limit: '1gb', extended: true }));
 
-// JWT middleware is available in ./src/middleware/auth.js
-// Use authenticateToken for protected routes: app.get('/protected', authenticateToken, (req, res) => {})
-// Use optionalAuth for routes where authentication is optional
-
 // Initialize Stripe
 require('dotenv').config();
 // eslint-disable-next-line no-undef
@@ -189,6 +185,23 @@ app.post('/user-auth',      // before
         catch (err) {
             console.log(err);
             return res.status(400).json({ success: false, msg: "Something went wrong" });
+        }
+    });
+
+app.post('/get-jwt-token',    // before
+    versionValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Generate JWT token
+            const token = generateToken(email);
+            return res.status(200).json({ success: true, token });
+        } catch (error) {
+            console.error('Error generating JWT token:', error);
+            return res.status(500).json({ success: false, msg: 'Failed to generate JWT token' });
         }
     });
 
@@ -534,7 +547,6 @@ app.post('/get-user-enquiries',   // after
     });
 
 app.post('/check-account-status',   // after
-    versionValidation,
     optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {

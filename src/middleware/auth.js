@@ -6,7 +6,7 @@ const SECRET_KEY = 'supersecretfrontendkey';
 // Generate JWT Token
 const generateToken = (email) => {
   const payload = { email };
-  const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '2h' }); // Token expires in 24 hours
+  const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '2h' }); // Token expires in 2 hours
   return token;
 };
 
