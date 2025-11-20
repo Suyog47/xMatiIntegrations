@@ -364,7 +364,7 @@ app.post('/update-profile',   // after
     maintenanceValidation,
     async (req, res) => {
         try {
-            const data = req.body.data;
+            const { data } = req.body;
             const email = req.user.email; // Get email from JWT token
 
             // Update user profile
@@ -401,9 +401,10 @@ app.post('/update-profile',   // after
 
 app.post('/update-password',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['data']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { data } = req.body;
@@ -472,9 +473,10 @@ app.post('/update-card-info',   // after
 
 app.post('/get-card-details',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['paymentMethodId']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { paymentMethodId } = req.body;
@@ -493,9 +495,10 @@ app.post('/get-card-details',   // after
 
 app.post('/pro-suggestion-update',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email, plan, duration, price } = req.body;
@@ -514,9 +517,10 @@ app.post('/pro-suggestion-update',   // after
 
 app.post('/submit-enquiry',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'enquiry']),
+    maintenanceValidation,
     async (req, res) => {
         const { email, enquiry } = req.body;
 
@@ -545,9 +549,10 @@ app.post('/submit-enquiry',   // after
 
 app.post('/get-user-enquiries',   // after 
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email } = req.body;
@@ -602,6 +607,7 @@ app.post('/check-account-status',   // after
         }
     });
 
+// not used
 app.post('/get-maintenance',  // after
     versionValidation,
     optionalAuth,
@@ -619,6 +625,7 @@ app.post('/get-maintenance',  // after
         }
     });
 
+// not used
 app.post('/get-versions',   // after
     maintenanceValidation,
     optionalAuth,
@@ -652,109 +659,6 @@ app.post('/get-versions',   // after
         }
     });
 
-async function triggerVersionMismatch(userId, version) {
-    try {
-        // Send force block message using userId as clientId
-        const success = wsManager.sendVersionStatus(userId, version);
-
-        if (success) {
-            return {
-                success: true,
-                message: `Force block signal sent to user ${userId} successfully`
-            };
-        } else {
-            return {
-                success: false,
-                message: `User ${userId} not found or not connected via WebSocket`
-            };
-        }
-    } catch (error) {
-        console.error('Error triggering logout:', error);
-        return {
-            success: false,
-            message: 'Failed to trigger logout',
-            error: error.message
-        };
-    }
-}
-
-app.post('/save-bot',  // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
-    async (req, res) => {
-        try {
-            const { fullName, organizationName, key, data, from } = req.body;
-
-            var result = await saveBot(fullName, organizationName, key, data, from);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to save bot' });
-            }
-            return res.status(200).json({ status: true, message: 'Bot saved successfully' });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
-        }
-    });
-
-app.post('/get-bots',  // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['email']),
-    async (req, res) => {
-        try {
-            const { email } = req.body;
-
-            let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to get bot' });
-            }
-
-            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
-        }
-    });
-
-app.get('/get-all-bots',  // after 
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    async (req, res) => {
-        try {
-
-            let result = await getFromMongoByPrefix("xmatibots", '');
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to get bot' });
-            }
-
-            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
-        }
-    });
-
-app.post('/delete-bot',   // after
-    versionValidation,
-    maintenanceValidation,
-    optionalAuth,
-    validateRequiredFields(['fullName', 'key']),
-    async (req, res) => {
-        try {
-            const { fullName, key } = req.body;
-
-            let result = await deleteBot(fullName, key);
-            if (!result) {
-                return res.status(400).json({ status: false, error: 'Failed to delete bot' });
-            }
-
-            return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
-        } catch (error) {
-            return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
-        }
-    });
-
 app.post('/get-block-status',  // after
     versionValidation,
     authenticateToken,
@@ -785,6 +689,115 @@ app.post('/get-block-status',  // after
                 message: 'Something went wrong while updating user block status',
                 error: error.message
             });
+        }
+    });
+
+async function triggerVersionMismatch(userId, version) {
+    try {
+        // Send force block message using userId as clientId
+        const success = wsManager.sendVersionStatus(userId, version);
+
+        if (success) {
+            return {
+                success: true,
+                message: `Force block signal sent to user ${userId} successfully`
+            };
+        } else {
+            return {
+                success: false,
+                message: `User ${userId} not found or not connected via WebSocket`
+            };
+        }
+    } catch (error) {
+        console.error('Error triggering logout:', error);
+        return {
+            success: false,
+            message: 'Failed to trigger logout',
+            error: error.message
+        };
+    }
+}
+
+// not used
+app.post('/save-bot',  // after
+    versionValidation,
+    optionalAuth,
+    decryptPayload,
+    validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
+    maintenanceValidation,
+    async (req, res) => {
+        try {
+            const { fullName, organizationName, key, data, from } = req.body;
+
+            var result = await saveBot(fullName, organizationName, key, data, from);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to save bot' });
+            }
+            return res.status(200).json({ status: true, message: 'Bot saved successfully' });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while saving the bot' });
+        }
+    });
+
+// not used
+app.post('/get-bots',  // after
+    versionValidation,
+    optionalAuth,
+    decryptPayload,
+    validateRequiredFields(['email']),
+    maintenanceValidation,
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            let result = await getFromMongoByPrefix("xmatibots", `${email}_`);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
+        }
+    });
+
+// not used
+app.get('/get-all-bots',  // after 
+    versionValidation,
+    optionalAuth,
+    async (req, res) => {
+        try {
+
+            let result = await getFromMongoByPrefix("xmatibots", '');
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to get bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bots received successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while getting the bot' });
+        }
+    });
+
+// not used
+app.post('/delete-bot',   // after
+    versionValidation,
+    optionalAuth,
+    decryptPayload,
+    validateRequiredFields(['fullName', 'key']),
+    maintenanceValidation,
+    async (req, res) => {
+        try {
+            const { fullName, key } = req.body;
+
+            let result = await deleteBot(fullName, key);
+            if (!result) {
+                return res.status(400).json({ status: false, error: 'Failed to delete bot' });
+            }
+
+            return res.status(200).json({ status: true, message: 'Bot deleted successfully', data: result });
+        } catch (error) {
+            return res.status(500).json({ status: false, error: error || 'Something went wrong while deleting the bot' });
         }
     });
 

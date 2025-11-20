@@ -26,7 +26,6 @@ function decryptPayload(req, res, next) {
 
     const json = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
 
-    console.log('body:- ', json)
     req.body = json;
 
     next();
