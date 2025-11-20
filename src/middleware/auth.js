@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 // JWT Secret Key
-const SECRET_KEY = 'supersecretfrontendkey';
+const SECRET_KEY = process.env.JWT_SECRET;
 
 // Generate JWT Token
 const generateToken = (email) => {

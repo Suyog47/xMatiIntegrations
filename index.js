@@ -37,10 +37,12 @@ const WebSocketManager = require('./src/websocket/websocket-manager');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
 const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
+const { generateAESKey, getAESKeyForUser } = require('./src/middleware/aes');
 const { disableTimeout, errorHandler, validateRequiredFields } = require('./src/middleware/common');
 const { versionValidation } = require('./src/middleware/version-validation');
 const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
+const { decryptPayload } = require('./src/middleware/decrypt');
 
 require('dotenv').config();
 
@@ -134,6 +136,10 @@ app.post('/user-auth',      // before
                     msg = "Login Successful";
                     dbData = result;
 
+                    // Generate AES key
+                    const aesKey = generateAESKey(data.email);
+                    dbData.aesKey = aesKey;
+
                     // Generate JWT token with email
                     const token = generateToken(data.email);
                     dbData.token = token;
@@ -201,7 +207,28 @@ app.post('/get-jwt-token',    // before
             return res.status(200).json({ success: true, token });
         } catch (error) {
             console.error('Error generating JWT token:', error);
-            return res.status(500).json({ success: false, msg: 'Failed to generate JWT token' });
+            return res.status(500).json({ success: false, msg: 'Failed to get JWT token' });
+        }
+    });
+
+app.post('/get-aes-key',    // before
+    versionValidation,
+    optionalAuth,
+    validateRequiredFields(['email']),
+    async (req, res) => {
+        try {
+            const { email } = req.body;
+
+            // Retrieve AES key for user
+            const aesKey = getAESKeyForUser(email);
+            if (!aesKey) {
+                return res.status(404).json({ success: false, msg: 'AES key not found' });
+            }
+
+            return res.status(200).json({ success: true, aesKey });
+        } catch (error) {
+            console.error('Error retrieving AES key:', error);
+            return res.status(500).json({ success: false, msg: 'Failed to retrieve AES key' });
         }
     });
 
@@ -331,12 +358,13 @@ app.post('/create-setup-intent',   // before
 
 app.post('/update-profile',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['data']),
+    maintenanceValidation,
     async (req, res) => {
         try {
-            const { data } = req.body;
+            const data = req.body.data;
             const email = req.user.email; // Get email from JWT token
 
             // Update user profile
@@ -415,9 +443,10 @@ app.post('/update-password',   // after
 
 app.post('/update-card-info',   // after
     versionValidation,
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'customerId', 'paymentMethodId', 'data']),
+    maintenanceValidation,
     async (req, res) => {
         const { email, customerId, paymentMethodId, data } = req.body;
 

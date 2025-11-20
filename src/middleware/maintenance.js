@@ -15,15 +15,19 @@ async function maintenanceValidation(req, res, next) {
         //     userEmail = req.user.email;
         // }
 
-        // 1. Check if email is in request body
-        if (req.body && req.body.email) {
+        // 1. Check if email is in decrypted body (for encrypted requests)
+        if (req.decryptedBody && req.decryptedBody.email) {
+            userEmail = req.decryptedBody.email;
+        }
+        // 2. Check if email is in request body
+        else if (req.body && req.body.email) {
             userEmail = req.body.email;
         }
-        // 2. Check if email is in request body data object
+        // 3. Check if email is in request body data object
         else if (req.body && req.body.data && req.body.data.email) {
             userEmail = req.body.data.email;
         }
-        // 3. Check if key field contains email (for some endpoints)
+        // 4. Check if key field contains email (for some endpoints)
         else if (req.body && req.body.key && req.body.key.includes('@')) {
             userEmail = req.body.key;
         }
