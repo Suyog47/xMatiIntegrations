@@ -36,7 +36,7 @@ const { checkUser } = require('./src/authentication/check-user');
 const WebSocketManager = require('./src/websocket/websocket-manager');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
 const { createPaymentIntent, getOrCreateCustomerByEmail, getStripeTransaction, refundCharge, getCardDetails } = require('./src/payment-gateway/stripe');
-const { authenticateToken, optionalAuth, generateToken } = require('./src/middleware/auth');
+const { authenticateToken, generateToken } = require('./src/middleware/auth');
 const { generateAESKey, getAESKeyForUser } = require('./src/middleware/aes');
 const { disableTimeout, errorHandler, validateRequiredFields } = require('./src/middleware/common');
 const { versionValidation } = require('./src/middleware/version-validation');
@@ -106,7 +106,7 @@ app.get('/', (req, res) => {
 app.post('/user-auth',      // before 
     versionValidation,
     maintenanceValidation,
-    optionalAuth,
+
     validateRequiredFields(['data', 'from']),
     async (req, res) => {
         try {
@@ -196,7 +196,6 @@ app.post('/user-auth',      // before
 
 app.post('/get-jwt-token',    // before
     versionValidation,
-    optionalAuth,
     validateRequiredFields(['email']),
     async (req, res) => {
         try {
@@ -213,7 +212,7 @@ app.post('/get-jwt-token',    // before
 
 app.post('/get-aes-key',    // before
     versionValidation,
-    optionalAuth,
+
     validateRequiredFields(['email']),
     async (req, res) => {
         try {
@@ -286,7 +285,7 @@ app.post('/send-email-otp',  // before
 app.post('/forgot-pass',  // before
     versionValidation,
     maintenanceValidation,
-    optionalAuth,
+
     validateRequiredFields(['email', 'password']),
     async (req, res) => {
         try {
@@ -307,7 +306,7 @@ app.post('/forgot-pass',  // before
 app.post('/get-subscription',   // before
     versionValidation,
     maintenanceValidation,
-    optionalAuth,
+
     validateRequiredFields(['key']),
     async (req, res) => {
         try {
@@ -581,7 +580,7 @@ app.post('/get-user-enquiries',   // after
     });
 
 app.post('/check-account-status',   // after
-    optionalAuth,
+
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email, isMother = false } = req.body;
@@ -610,7 +609,7 @@ app.post('/check-account-status',   // after
 // not used
 app.post('/get-maintenance',  // after
     versionValidation,
-    optionalAuth,
+
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email } = req.body;
@@ -628,7 +627,7 @@ app.post('/get-maintenance',  // after
 // not used
 app.post('/get-versions',   // after
     maintenanceValidation,
-    optionalAuth,
+
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email } = req.body;
@@ -721,7 +720,7 @@ async function triggerVersionMismatch(userId, version) {
 // not used
 app.post('/save-bot',  // after
     versionValidation,
-    optionalAuth,
+
     decryptPayload,
     validateRequiredFields(['fullName', 'organizationName', 'key', 'data', 'from']),
     maintenanceValidation,
@@ -742,7 +741,7 @@ app.post('/save-bot',  // after
 // not used
 app.post('/get-bots',  // after
     versionValidation,
-    optionalAuth,
+
     decryptPayload,
     validateRequiredFields(['email']),
     maintenanceValidation,
@@ -764,7 +763,7 @@ app.post('/get-bots',  // after
 // not used
 app.get('/get-all-bots',  // after 
     versionValidation,
-    optionalAuth,
+
     async (req, res) => {
         try {
 
@@ -782,7 +781,7 @@ app.get('/get-all-bots',  // after
 // not used
 app.post('/delete-bot',   // after
     versionValidation,
-    optionalAuth,
+
     decryptPayload,
     validateRequiredFields(['fullName', 'key']),
     maintenanceValidation,
@@ -806,9 +805,10 @@ app.post('/delete-bot',   // after
 // ################ Mother(Util) APIs################
 
 app.post('/save-subscription',     // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
+    maintenanceValidation,
     async (req, res) => {
         const { key, name, subscription, duration, amount } = req.body;
 
@@ -851,7 +851,9 @@ async function triggerLogout(userId) {
 app.post('/nextsub-upgrade',   // mother
     maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email, plan, duration, price, isDowngrade } = req.body;
@@ -870,9 +872,10 @@ app.post('/nextsub-upgrade',   // mother
     });
 
 app.post('/remove-nextsub',   // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email } = req.body;
@@ -920,6 +923,7 @@ app.get('/get-enquiries',   // mother
 
 app.post('/set-maintenance',   // mother
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['status']),
     async (req, res) => {
         try {
@@ -937,6 +941,7 @@ app.post('/set-maintenance',   // mother
 
 app.post('/set-block-status',  // mother
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'status']),
     async (req, res) => {
         try {
@@ -1051,7 +1056,7 @@ async function triggerBlock(userId, status) {
 }
 
 app.get('/get-all-users-subscriptions',  // mother
-    optionalAuth,
+
     async (req, res) => {
         try {
             // Fetch all user keys from the 'xmati-users' bucket
@@ -1226,8 +1231,8 @@ app.get('/get-all-users-subscriptions',  // mother
 
 
 app.post('/attach-payment-method', // mother 
-    maintenanceValidation,
     validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
+    maintenanceValidation,
     async (req, res) => {
         const { email, paymentMethodId, customerId } = req.body;
 
@@ -1270,9 +1275,8 @@ app.post('/attach-payment-method', // mother
     });
 
 app.post('/create-payment-intent',  // mother 
-    maintenanceValidation,
-    optionalAuth,
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { amount, currency, customerId, paymentMethodId, email, subscription, duration } = req.body; // Amount in cents (e.g., $10.00 = 1000)
@@ -1293,9 +1297,10 @@ app.post('/create-payment-intent',  // mother
     });
 
 app.post('/refund-amount',  // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['chargeId', 'reason', 'amount']),
+    maintenanceValidation,
     async (req, res) => {
         const { chargeId, reason, amount } = req.body;
 
@@ -1312,9 +1317,10 @@ app.post('/refund-amount',  // mother
     });
 
 app.post('/failed-payment',   // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'name', 'subscription', 'amount']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email, name, subscription, amount } = req.body;
@@ -1334,9 +1340,10 @@ app.post('/failed-payment',   // mother
     });
 
 app.post('/get-stripe-transactions',  // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email']),
+    maintenanceValidation,
     async (req, res) => {
         const { email } = req.body
 
@@ -1354,9 +1361,10 @@ app.post('/get-stripe-transactions',  // mother
     });
 
 app.post('/trial-cancellation',   // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email } = req.body;
@@ -1373,9 +1381,10 @@ app.post('/trial-cancellation',   // mother
     });
 
 app.post('/downgrade-subscription',  // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email, fullName, currentSub, daysRemaining, amount } = req.body;
@@ -1394,9 +1403,10 @@ app.post('/downgrade-subscription',  // mother
     });
 
 app.post('/cancel-subscription',  // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
     validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { chargeId, reason, email, fullName, subscription, amount, refundDetails } = req.body;
@@ -1418,8 +1428,10 @@ app.post('/cancel-subscription',  // mother
     });
 
 app.post('/download-csv',  // mother
-    maintenanceValidation,
     authenticateToken,
+    decryptPayload,
+    validateRequiredFields(['data', 'email']),
+    maintenanceValidation,
     (req, res) => {
         try {
             const { data, email } = req.body;
@@ -1437,9 +1449,9 @@ app.post('/download-csv',  // mother
     });
 
 app.post('/rollback-registration',  // mother
-    maintenanceValidation,
-    optionalAuth,
+
     validateRequiredFields(['email']),
+    maintenanceValidation,
     async (req, res) => {
         try {
             const { email } = req.body;

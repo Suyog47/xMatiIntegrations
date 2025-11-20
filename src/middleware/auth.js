@@ -32,28 +32,28 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Optional: Create a middleware for optional authentication (doesn't block if no token)
-const optionalAuth = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader) {
-    return next(); // Continue without authentication
-  }
+// const optionalAuth = (req, res, next) => {
+//   const authHeader = req.headers['authorization'];
+//   if (!authHeader) {
+//     return next(); // Continue without authentication
+//   }
 
-  const token = authHeader.split(' ')[1];
-  if (!token) {
-    return next(); // Continue without authentication
-  }
+//   const token = authHeader.split(' ')[1];
+//   if (!token) {
+//     return next(); // Continue without authentication
+//   }
 
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (!err) {
-      req.user = decoded;
-    }
-    next(); // Continue regardless of token validity
-  });
-};
+//   jwt.verify(token, SECRET_KEY, (err, decoded) => {
+//     if (!err) {
+//       req.user = decoded;
+//     }
+//     next(); // Continue regardless of token validity
+//   });
+// };
 
 module.exports = {
   authenticateToken,
-  optionalAuth,
+  //optionalAuth,
   generateToken,
   SECRET_KEY
 };
