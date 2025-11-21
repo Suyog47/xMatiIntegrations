@@ -163,7 +163,7 @@ app.post('/user-auth',      // before
                     // Save subscription details
                     let response;
                     if (nextSubsData.plan !== 'Starter') {
-                        response = await SaveSubscription(data.email, data.fullName, "Trial", "5d", 0, 0, false);
+                        response = await SaveSubscription(data.email, data.fullName, "Trial", "30d", 0, 0, false);
                     } else {
                         response = await SaveSubscription(data.email, data.fullName, nextSubsData.plan, nextSubsData.duration, 0, nextSubsData.price, false);
                     }
