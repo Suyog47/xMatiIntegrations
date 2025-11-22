@@ -49,10 +49,10 @@ require('dotenv').config();
 // List of allowed origins
 const allowedOrigins = [
     'https://www.app.xmati.ai',
+    'https://www.app.xmati.ai/utils',
     'https://app.xmati.ai',
+    'https://app.xmati.ai/utils',
     'http://localhost:3000',
-    'http://localhost:5000',
-    'http://localhost:5001',
     'http://localhost:7001'
 ];
 
