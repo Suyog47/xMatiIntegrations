@@ -28,10 +28,6 @@ const {
     registrationRollbackEmail,
 } = require('./templates/email_template');
 const { downloadCSV } = require('./src/csv-download');
-const cors = require("cors");
-// const path = require('path');
-const app = express();
-const http = require('http');
 const { checkUser } = require('./src/authentication/check-user');
 const WebSocketManager = require('./src/websocket/websocket-manager');
 const { trialCancellation } = require('./src/subscription-services/trial-cancel');
@@ -43,7 +39,11 @@ const { versionValidation } = require('./src/middleware/version-validation');
 const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
 const { decryptPayload } = require('./src/middleware/decrypt');
+const { hashPassword } = require('./utils/pass_bcrpyt');
+const cors = require("cors");
 
+const app = express();
+const http = require('http');
 require('dotenv').config();
 
 // List of allowed origins
@@ -149,7 +149,10 @@ app.post('/user-auth',      // before
             if (from === "register") {
                 const nextSubsData = data.nextSubs;
 
-                result = await register(data.email, data);
+                // hashing password before saving
+                const hashedPassword = await hashPassword(data.password);
+
+                result = await register(data.email, { ...data, password: hashedPassword });
                 if (result === "already exist") {
                     status = 400;
                     success = false;
@@ -291,7 +294,10 @@ app.post('/forgot-pass',  // before
         try {
             const { email, password } = req.body;
 
-            let result = await forgotPass(email, password);
+            // hash password first
+            const hashedPassword = await hashPassword(password);
+
+            let result = await forgotPass(email, hashedPassword);
             if (!result) {
                 return res.status(400).json({ status: false, msg: 'Failed to update password' });
             }
@@ -409,8 +415,12 @@ app.post('/update-password',   // after
             const { data } = req.body;
             const email = req.user.email; // Get email from JWT token
 
+
+            //hash password first
+            const hashedPassword = await hashPassword(data.password);
+
             // Update user password
-            let result = await updateUserPassOrProfile(email, data);
+            let result = await updateUserPassOrProfile(email, { ...data, password: hashedPassword });
 
             if (result === "success") {
                 // Send email notification for password change

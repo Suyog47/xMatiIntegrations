@@ -1,12 +1,13 @@
 // const s3Service = require("../../../utils/s3-service");
 // const { Buffer } = require("buffer");
 const { saveDocument, getDocument, mongoKeyExists } = require("../../../utils/mongo-db");
+const { comparePasswords } = require("../../../utils/pass_bcrpyt");
 
 async function login(email, password) {
     if (await checkUser(email)) {
         let mongoData = await getDocument("xmati-users", `${email}`);
 
-        if (mongoData.password === password) {
+        if (await comparePasswords(password, mongoData.password)) {
             return mongoData;
         } else {
             return "wrong pass";
