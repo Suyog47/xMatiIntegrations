@@ -40,6 +40,7 @@ const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
 const { decryptPayload } = require('./src/middleware/decrypt');
 const { hashPassword } = require('./utils/pass_bcrpyt');
+const UniversalQnAScraper  = require('./utils/qna-algo');
 const cors = require("cors");
 
 const app = express();
@@ -1459,7 +1460,6 @@ app.post('/download-csv',  // mother
     });
 
 app.post('/rollback-registration',  // mother
-
     validateRequiredFields(['email']),
     maintenanceValidation,
     async (req, res) => {
@@ -1514,7 +1514,30 @@ app.post('/rollback-registration',  // mother
         }
     });
 
+app.post('/qna-generator', 
+    maintenanceValidation,
+    validateRequiredFields(['url']),
+    async (req, res) => {
+        try{
+            const { url } = req.body;
 
+            const scraper = new UniversalQnAScraper();
+            let result = await scraper.scrapeAnyPage(url);
+
+            return res.status(200).json({
+                success: true,
+                message: 'QnA generated successfully',
+                data: result
+            });
+        } catch(error){
+            console.error('Error in qna-generator endpoint:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Something went wrong while generating QnA',
+                error: error.message
+            });
+        }
+    });
 
 //cron job to send expiry email every day at 10:00 PM
 cron.schedule('25 18 * * *', async () => {
