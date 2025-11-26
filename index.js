@@ -40,7 +40,7 @@ const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
 const { decryptPayload } = require('./src/middleware/decrypt');
 const { hashPassword } = require('./utils/pass_bcrpyt');
-const UniversalQnAScraper  = require('./utils/qna-algo');
+const GenericQnAScraper  = require('./utils/qna-algo');
 const cors = require("cors");
 
 const app = express();
@@ -1521,8 +1521,8 @@ app.post('/qna-generator',
         try{
             const { url } = req.body;
 
-            const scraper = new UniversalQnAScraper();
-            let result = await scraper.scrapeAnyPage(url);
+            const scraper = new GenericQnAScraper();
+            let result = await scraper.scrapePage(url);
 
             return res.status(200).json({
                 success: true,
