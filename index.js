@@ -591,7 +591,6 @@ app.post('/get-user-enquiries',   // after
     });
 
 app.post('/check-account-status',   // after
-
     validateRequiredFields(['email']),
     async (req, res) => {
         const { email, isMother = false } = req.body;
@@ -1538,6 +1537,18 @@ app.post('/qna-generator',
             });
         }
     });
+
+app.post('/get-clean-text', async (req, res) => {
+    const { url } = req.body;
+
+            const scraper = new GenericQnAScraper();
+            let result = await scraper.getCleanContent(url);
+            return res.status(200).json({
+                success: true,
+                message: 'Clean text retrieved successfully',
+                data: result
+            });
+});
 
 //cron job to send expiry email every day at 10:00 PM
 cron.schedule('25 18 * * *', async () => {

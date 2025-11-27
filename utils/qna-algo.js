@@ -326,6 +326,35 @@ class GenericQnAScraper {
     console.log(`QnA data saved to ${filename}. Found ${this.qnas.length} QnA pairs.`);
   }
 
+  async getCleanContent(url) {
+  try {
+    const response = await axios.get(url);
+    const $ = cheerio.load(response.data);
+    
+    // Remove all unwanted elements completely
+    $('script, style, nav, footer, header, aside, iframe, img, form, button, input, select, textarea').remove();
+    
+    // Get the main content area
+    let contentElement = $('main, article, .content, .post-content, .entry-content');
+    
+    // If no specific content container found, use body but remove common non-content elements
+    if (!contentElement.length) {
+      contentElement = $('body');
+      contentElement.find('header, footer, nav, aside').remove();
+    }
+    
+    // Get clean text content
+    const cleanText = contentElement.text()
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/\n+/g, '\n') // Replace multiple newlines with single newline
+      .trim();
+    return cleanText;
+    
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+  }
+}
+
   clear() {
     this.qnas = [];
   }
