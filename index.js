@@ -40,7 +40,7 @@ const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
 const { decryptPayload } = require('./src/middleware/decrypt');
 const { hashPassword } = require('./utils/pass_bcrpyt');
-const GenericQnAScraper  = require('./utils/qna-algo');
+const GenericQnAScraper = require('./utils/qna-algo');
 const cors = require("cors");
 
 const app = express();
@@ -107,7 +107,6 @@ app.get('/', (req, res) => {
 app.post('/user-auth',      // before 
     versionValidation,
     maintenanceValidation,
-
     validateRequiredFields(['data', 'from']),
     async (req, res) => {
         try {
@@ -200,6 +199,7 @@ app.post('/user-auth',      // before
 
 app.post('/get-jwt-token',    // before
     versionValidation,
+    maintenanceValidation,
     validateRequiredFields(['email']),
     async (req, res) => {
         try {
@@ -216,7 +216,7 @@ app.post('/get-jwt-token',    // before
 
 app.post('/get-aes-key',    // before
     versionValidation,
-
+    maintenanceValidation,
     validateRequiredFields(['email']),
     async (req, res) => {
         try {
@@ -236,9 +236,6 @@ app.post('/get-aes-key',    // before
     });
 
 app.post('/send-email',     // before
-    versionValidation,
-    maintenanceValidation,
-    authenticateToken,
     validateRequiredFields(['to', 'subject', 'content']),
     async (req, res) => {
         try {
@@ -256,6 +253,7 @@ app.post('/send-email',     // before
     });
 
 app.post('/check-user',   // before
+    versionValidation,
     maintenanceValidation,
     validateRequiredFields(['email', 'from']),
     async (req, res) => {
@@ -277,6 +275,7 @@ app.post('/check-user',   // before
 
 app.post('/send-email-otp',  // before
     maintenanceValidation,
+    versionValidation,
     validateRequiredFields(['fullName', 'email', 'otp']),
     async (req, res) => {
         const { fullName, email, otp } = req.body;
@@ -289,7 +288,6 @@ app.post('/send-email-otp',  // before
 app.post('/forgot-pass',  // before
     versionValidation,
     maintenanceValidation,
-
     validateRequiredFields(['email', 'password']),
     async (req, res) => {
         try {
@@ -313,7 +311,6 @@ app.post('/forgot-pass',  // before
 app.post('/get-subscription',   // before
     versionValidation,
     maintenanceValidation,
-
     validateRequiredFields(['key']),
     async (req, res) => {
         try {
@@ -332,8 +329,11 @@ app.post('/get-subscription',   // before
         }
     });
 
-app.post('/create-setup-intent',   // before
+
+app.post('/create-setup-intent',   // before and after
+    versionValidation,
     maintenanceValidation,
+    // Authentication middleware not required because cvv and full card number is not fetched
     validateRequiredFields(['email', 'customerId']),
     async (req, res) => {
         const { email, customerId } = req.body;
@@ -373,8 +373,11 @@ app.post('/update-profile',   // after
             const { data } = req.body;
             const email = req.user.email; // Get email from JWT token
 
+            // hashing password before saving
+            const hashedPassword = await hashPassword(data.password);
+
             // Update user profile
-            let result = await updateUserPassOrProfile(email, data);
+            let result = await updateUserPassOrProfile(email, { ...data, password: hashedPassword });
 
             if (result === "success") {
                 // Send email notification for profile update
@@ -668,6 +671,7 @@ app.post('/get-versions',   // after
         }
     });
 
+// not used
 app.post('/get-block-status',  // after
     versionValidation,
     authenticateToken,
@@ -815,6 +819,7 @@ app.post('/delete-bot',   // after
 // ################ Mother(Util) APIs################
 
 app.post('/save-subscription',     // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['key', 'name', 'subscription', 'duration', 'amount']),
@@ -859,7 +864,7 @@ async function triggerLogout(userId) {
 }
 
 app.post('/nextsub-upgrade',   // mother
-    maintenanceValidation,
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email', 'plan', 'duration', 'price']),
@@ -882,6 +887,7 @@ app.post('/nextsub-upgrade',   // mother
     });
 
 app.post('/remove-nextsub',   // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email']),
@@ -903,11 +909,10 @@ app.post('/remove-nextsub',   // mother
         }
     });
 
-app.get('/get-enquiries',   // mother
+app.get('/get-enquiries',   // mother - admin
     authenticateToken,
     async (req, res) => {
         try {
-
             let result = await getEnquiry();
 
             if (result === false) {
@@ -931,7 +936,7 @@ app.get('/get-enquiries',   // mother
         }
     });
 
-app.post('/set-maintenance',   // mother
+app.post('/set-maintenance',   // mother - admin
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['status']),
@@ -949,7 +954,7 @@ app.post('/set-maintenance',   // mother
         }
     });
 
-app.post('/set-block-status',  // mother
+app.post('/set-block-status',  // mother - admin
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email', 'status']),
@@ -1065,8 +1070,8 @@ async function triggerBlock(userId, status) {
     }
 }
 
-app.get('/get-all-users-subscriptions',  // mother
-
+app.get('/get-all-users-subscriptions',  // mother - admin
+    authenticateToken,
     async (req, res) => {
         try {
             // Fetch all user keys from the 'xmati-users' bucket
@@ -1240,9 +1245,10 @@ app.get('/get-all-users-subscriptions',  // mother
 // });
 
 
-app.post('/attach-payment-method', // mother 
-    validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
+app.post('/attach-payment-method', // mother and before
+    versionValidation,
     maintenanceValidation,
+    validateRequiredFields(['email', 'paymentMethodId', 'customerId']),
     async (req, res) => {
         const { email, paymentMethodId, customerId } = req.body;
 
@@ -1284,7 +1290,7 @@ app.post('/attach-payment-method', // mother
         }
     });
 
-app.post('/create-payment-intent',  // mother 
+app.post('/create-payment-intent',  // mother, before and after
     validateRequiredFields(['amount', 'currency', 'customerId', 'paymentMethodId', 'email', 'subscription', 'duration']),
     maintenanceValidation,
     async (req, res) => {
@@ -1307,6 +1313,7 @@ app.post('/create-payment-intent',  // mother
     });
 
 app.post('/refund-amount',  // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['chargeId', 'reason', 'amount']),
@@ -1327,6 +1334,7 @@ app.post('/refund-amount',  // mother
     });
 
 app.post('/failed-payment',   // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email', 'name', 'subscription', 'amount']),
@@ -1350,6 +1358,7 @@ app.post('/failed-payment',   // mother
     });
 
 app.post('/get-stripe-transactions',  // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email']),
@@ -1371,6 +1380,7 @@ app.post('/get-stripe-transactions',  // mother
     });
 
 app.post('/trial-cancellation',   // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email']),
@@ -1391,6 +1401,7 @@ app.post('/trial-cancellation',   // mother
     });
 
 app.post('/downgrade-subscription',  // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['email', 'fullName', 'currentSub', 'daysRemaining', 'amount']),
@@ -1413,6 +1424,7 @@ app.post('/downgrade-subscription',  // mother
     });
 
 app.post('/cancel-subscription',  // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['chargeId', 'reason', 'email', 'fullName', 'subscription', 'amount', 'refundDetails']),
@@ -1438,6 +1450,7 @@ app.post('/cancel-subscription',  // mother
     });
 
 app.post('/download-csv',  // mother
+    versionValidation,
     authenticateToken,
     decryptPayload,
     validateRequiredFields(['data', 'email']),
@@ -1458,7 +1471,8 @@ app.post('/download-csv',  // mother
         }
     });
 
-app.post('/rollback-registration',  // mother
+app.post('/rollback-registration',  // mother and before
+    versionValidation,
     validateRequiredFields(['email']),
     maintenanceValidation,
     async (req, res) => {
@@ -1513,11 +1527,11 @@ app.post('/rollback-registration',  // mother
         }
     });
 
-app.post('/qna-generator', 
+app.post('/qna-generator',
     maintenanceValidation,
     validateRequiredFields(['url']),
     async (req, res) => {
-        try{
+        try {
             const { url } = req.body;
 
             const scraper = new GenericQnAScraper();
@@ -1528,7 +1542,7 @@ app.post('/qna-generator',
                 message: 'QnA generated successfully',
                 data: result
             });
-        } catch(error){
+        } catch (error) {
             console.error('Error in qna-generator endpoint:', error);
             return res.status(500).json({
                 success: false,
@@ -1541,13 +1555,13 @@ app.post('/qna-generator',
 app.post('/get-clean-text', async (req, res) => {
     const { url } = req.body;
 
-            const scraper = new GenericQnAScraper();
-            let result = await scraper.getCleanContent(url);
-            return res.status(200).json({
-                success: true,
-                message: 'Clean text retrieved successfully',
-                data: result
-            });
+    const scraper = new GenericQnAScraper();
+    let result = await scraper.getCleanContent(url);
+    return res.status(200).json({
+        success: true,
+        message: 'Clean text retrieved successfully',
+        data: result
+    });
 });
 
 //cron job to send expiry email every day at 10:00 PM

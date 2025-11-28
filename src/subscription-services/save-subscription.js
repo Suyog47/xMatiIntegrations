@@ -40,7 +40,6 @@ async function SaveSubscription(key, name, subscription, duration, rdays = 0, am
         }
 
         const data = {
-            name,
             subscription,
             createdAt: currentDate,
             till: newDate,
