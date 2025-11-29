@@ -40,7 +40,8 @@ const { maintenanceValidation } = require('./src/middleware/maintenance');
 const { getVersions } = require('./src/version/get-version');
 const { decryptPayload } = require('./src/middleware/decrypt');
 const { hashPassword } = require('./utils/pass_bcrpyt');
-const GenericQnAScraper = require('./utils/qna-algo');
+const {getCleanContent, convertToBotpressFormat } = require('./utils/qna-algo');
+const { sendMessage } = require('./utils/hugging-face');
 const cors = require("cors");
 
 const app = express();
@@ -604,7 +605,7 @@ app.post('/check-account-status',   // after
 
             // Block status check
             const userData = await getDocument("xmati-users", email.replace(/_util/g, ''));
-            triggerBlock(email, userData.blocked || false);
+            triggerBlock(email, userData?.blocked || false);
 
             // Version check if the app is not Mother
             if (!isMother) {
@@ -1527,40 +1528,63 @@ app.post('/rollback-registration',  // mother and before
         }
     });
 
-app.post('/qna-generator',
-    maintenanceValidation,
-    validateRequiredFields(['url']),
-    async (req, res) => {
-        try {
-            const { url } = req.body;
+// app.post('/qna-generator',
+//     maintenanceValidation,
+//     validateRequiredFields(['url']),
+//     async (req, res) => {
+//         try {
+//             const { url } = req.body;
+//             let result = await sendMessage(url);
 
-            const scraper = new GenericQnAScraper();
-            let result = await scraper.scrapePage(url);
+//             return res.status(200).json({
+//                 success: true,
+//                 message: 'QnA generated successfully',
+//                 data: result
+//             });
+//         } catch (error) {
+//             console.error('Error in qna-generator endpoint:', error);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: 'Something went wrong while generating QnA',
+//                 error: error.message
+//             });
+//         }
+//     });
 
-            return res.status(200).json({
-                success: true,
-                message: 'QnA generated successfully',
-                data: result
-            });
-        } catch (error) {
-            console.error('Error in qna-generator endpoint:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Something went wrong while generating QnA',
-                error: error.message
-            });
-        }
-    });
-
-app.post('/get-clean-text', async (req, res) => {
+app.post('/qna-generator', async (req, res) => {
     const { url } = req.body;
 
-    const scraper = new GenericQnAScraper();
-    let result = await scraper.getCleanContent(url);
+    // get clean scrapped text first
+    let result = await getCleanContent(url);
+
+    // call AI model to generate QnA from clean text
+    let qnaResult = await sendMessage(result, {
+        maxTokens: 4096, // Increased token limit for longer responses
+        temperature: 0.3  // Lower temperature for more consistent JSON output
+    });
+    let qna;
+    if (!qnaResult.success) {
+       return res.status(500).json({
+        success: false,
+        message: 'Something went wrong while generating QnA',
+        error: qnaResult.message
+       });
+    }
+     qna = qnaResult.message;
+
+     // Convert QnA to Botpress format
+     let botpressQnA = convertToBotpressFormat(qna);
+     if (!botpressQnA) {
+       return res.status(500).json({
+         success: false,
+         message: 'Something went wrong while converting QnA to Botpress format',
+       });
+     }
+
     return res.status(200).json({
         success: true,
         message: 'Clean text retrieved successfully',
-        data: result
+        data: botpressQnA
     });
 });
 
